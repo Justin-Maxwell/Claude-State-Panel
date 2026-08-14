@@ -1,0 +1,11 @@
+__pycache__/
+*.py[cod]
+.venv/
+.pytest_cache/
+
+# kpackagetool6 output
+*.plasmoid
+
+# Local probe and diagnostic output, never committed
+/probe/out/
+*.jsonl

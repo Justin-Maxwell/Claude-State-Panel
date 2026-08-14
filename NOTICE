@@ -1,0 +1,39 @@
+Claude State Panel
+Copyright (C) 2026 Justin Maxwell
+
+This program is free software: you can redistribute it and/or modify it under
+the terms of the GNU Affero General Public License as published by the Free
+Software Foundation, either version 3 of the License, or (at your option) any
+later version. See LICENSE for the full text.
+
+
+DESIGN ATTRIBUTION
+==================
+
+No third-party code is vendored in this project. The offline scope removed
+every reason to. What follows credits design inspiration only, with the licence
+status of each source stated plainly.
+
+Glicio/claude-waybar-status
+  Per-session state model and the sticky-slot idea.
+  NO LICENCE FILE — all rights reserved.
+  No code has been copied, read, or adapted. The design here is clean-room,
+  described from that project's public README, which is all that was consulted.
+
+org.kde.plasma.claudelimits — Felix
+  MIT licensed.
+  Referenced for Plasma 6 plasmoid structure and the executable data-engine
+  pattern. No code copied. Retain this notice if any code is later used.
+
+com.cbo.claudeusage — Craig Borrows
+  MIT licensed.
+  Referenced for Kirigami theme-role usage. No code copied. Retain this notice
+  if any code is later used.
+
+fuziontech/claude-quota-widget
+  MIT licensed.
+  Referenced for the justfile plasmoid development loop. No code copied.
+
+If code from any MIT-licensed source above is later incorporated, its copyright
+notice and permission notice must be retained here, and the combined work
+remains distributable under AGPL-3.0-or-later.

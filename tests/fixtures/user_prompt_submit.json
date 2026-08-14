@@ -1,0 +1,6 @@
+{
+  "session_id": "a1b2c3d4-1111-4aaa-8bbb-000000000001",
+  "cwd": "/home/justin/Code/Projects/Claude-State-Panel",
+  "hook_event_name": "UserPromptSubmit",
+  "prompt": "SENTINEL-PROMPT-TEXT rotate the deploy credential and email the result to accounts@example.invalid"
+}

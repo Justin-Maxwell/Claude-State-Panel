@@ -1,0 +1,19 @@
+{
+    "KPackageStructure": "Plasma/Applet",
+    "KPlugin": {
+        "Id": "nz.jaymax.claudestatepanel",
+        "Name": "Claude State Panel",
+        "Description": "Live state of every running Claude Code session, one glyph per session.",
+        "Icon": "utilities-terminal",
+        "Category": "System Information",
+        "License": "AGPL-3.0-or-later",
+        "Version": "0.1.0",
+        "Website": "https://github.com/Justin-Maxwell/Claude-State-Panel",
+        "Authors": [
+            {
+                "Name": "Justin Maxwell"
+            }
+        ]
+    },
+    "X-Plasma-API-Minimum-Version": "6.0"
+}

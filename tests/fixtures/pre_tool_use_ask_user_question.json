@@ -1,0 +1,18 @@
+{
+  "session_id": "a1b2c3d4-1111-4aaa-8bbb-000000000001",
+  "cwd": "/home/justin/Code/Projects/Claude-State-Panel",
+  "hook_event_name": "PreToolUse",
+  "tool_name": "AskUserQuestion",
+  "tool_input": {
+    "questions": [
+      {
+        "question": "SENTINEL-TOOL-INPUT Which licence applies?",
+        "header": "Licence",
+        "options": [
+          {"label": "AGPL-3.0", "description": "Copyleft"},
+          {"label": "MIT", "description": "Permissive"}
+        ]
+      }
+    ]
+  }
+}

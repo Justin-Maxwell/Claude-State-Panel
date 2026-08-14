@@ -1,0 +1,9 @@
+{
+  "session_id": "a1b2c3d4-1111-4aaa-8bbb-000000000001",
+  "cwd": "/home/justin/Code/Projects/Claude-State-Panel",
+  "hook_event_name": "PermissionRequest",
+  "tool_name": "Bash",
+  "tool_input": {
+    "command": "SENTINEL-TOOL-INPUT systemctl --user restart plasma-plasmashell.service"
+  }
+}
