@@ -57,7 +57,7 @@ Phase 0 in progress, as of 2026-08-14. No implementation code written yet.
 
 | Phase | Deliverable | State |
 |---|---|---|
-| 0 | `probe/` harness; resolve every `⟨verify⟩` item touching hooks | **In progress** — probe live, 4 findings recorded, 3 open questions need interactive scenarios |
+| 0 | `probe/` harness; resolve every `⟨verify⟩` item touching hooks | **In progress** — probe live, 7 findings recorded, 3 open questions need interactive scenarios |
 | 1 | writer + evaluator + `doctor`, fully testable headless | Not started — blocked on Phase 0 |
 | 2 | plasmoid compact + popup; click copies `cwd` | Not started |
 | 3 | Konsole tab focus via D-Bus | Not started |
@@ -79,6 +79,15 @@ including scheduled overnight runs. Two consequences:
    registrations before Phase 1** registers the real writer, or both will run.
 2. `/tmp` is tmpfs. A reboot loses the capture. `docs/hook-events.md` holds the
    distilled record, so nothing important is only in `/tmp`.
+3. The capture is mode 0600 — it holds the `cwd` of every session on the machine.
+   `probe.sh` sets `umask 077`; if you ever see it at 0644, something recreated
+   the file outside the probe.
+
+Each record carries an `ancestry` field: the `pid:comm` chain from the hook's
+parent up to PID 1. That is where `konsole_pid` (§7.2) comes from, and it is the
+basis for distinguishing a non-interactive session — **no `konsole` ancestor** —
+rather than the `timeout` grandparent, which only detected one launcher. Ancestor
+`cmdline` is deliberately never recorded; see the header comment for why.
 
 To see what has accumulated:
 

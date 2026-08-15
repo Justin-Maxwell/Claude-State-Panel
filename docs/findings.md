@@ -27,7 +27,7 @@ One resolved. Eight outstanding from spec §13, plus one new item.
 | 1 | Does `PreToolUse` fire for `AskUserQuestion`, and `PostToolUse` only after the answer? | 0 |
 | 2 | What, if anything, fires on Esc interrupt? | 0 |
 | 4 | Does `Notification`/`idle_prompt` fire after an interrupt? | 0 |
-| 10 | Can a non-interactive session be reliably distinguished from an interactive one? | 0 |
+| 10 | Can a non-interactive session be reliably distinguished from an interactive one? — narrowed by finding E; `source` is ruled out | 0 |
 | 5 | Correct Plasma 6 QML import and API for the executable data engine | 2 |
 | 6 | Konsole D-Bus object paths, interfaces, and the PID field matching a tab | 3 |
 | 7 | Can a non-focused process raise a Konsole window under KWin on Wayland? | 3 |
@@ -109,6 +109,96 @@ item unresolved.
 - **Consequence:** the decision to drive `waiting-input` from `Stop` rather than
   `Notification` is empirically justified — it is a full minute faster. Leaves
   `Notification` available purely as the interrupt backstop.
+
+## E. `source` does not distinguish a non-interactive session
+
+- **Assumed:** the previous session expected the `SessionStart` `source` field to
+  answer open question 10 — that a scheduled run would report something other
+  than an interactive session does.
+- **Observed:** it does not. Both sessions report `source: "startup"`. The
+  scheduled run's `SessionEnd` carries `reason: "other"`, which the interactive
+  session has no counterpart for yet, but a reason on the *end* event is useless
+  for a decision that must be made at session *start*.
+- **Test:** 2026-08-15, records for sessions `e7519d22` (scheduled, `cwd`
+  `/home/justin`, lived 0.92s, no `UserPromptSubmit`, no tool calls) and
+  `a9c23e29` (interactive, `cwd` the repo).
+- **Consequence:** open question 10 stays open, minus one candidate. §6 cannot
+  read non-interactivity off the payload.
+
+  One candidate remains, from the same records: the scheduled session's
+  *grandparent* is `timeout`, where the interactive session's is `bash`.
+
+  ```
+  e7519d22  ppid_comm='claude'  gpid_comm='timeout'
+  a9c23e29  ppid_comm='claude'  gpid_comm='bash'
+  ```
+
+  Treat this as weak. It detects one particular scheduling wrapper, not
+  non-interactivity as such — a run launched without `timeout`, or an
+  interactive session started from something other than a shell, both defeat it.
+  It also collides with §7.2, which walks the same ancestry looking for
+  `konsole_pid`; absence of a Konsole ancestor is likely the sounder test, and is
+  the one worth designing against. Unconfirmed either way.
+
+  The run fired 60s after boot. I looked for what launched it and **could not
+  establish it.** Ruled out: user and system systemd timers, `crontab`, XDG
+  autostart (`~/.config/autostart` and `/etc/xdg/autostart`), shell profiles,
+  `statusLine`, and Claude Code routines — `routineFiredWatermark` in
+  `~/.claude.json` last fired 2026-06-28. The daemon log's last entry is
+  2026-08-14T00:45, so the daemon did not spawn it either.
+
+  The only `timeout … claude -p` strings on the machine are permission *rules*
+  in `~/.claude/settings.local.json`, added 2026-08-13 while testing `claude -p`.
+  Rules do not launch anything.
+
+  So "scheduled" is an assumption, not a finding. What is established: the
+  session ran under a `timeout` grandparent, in `/home/justin`, for 0.92s, with
+  no `UserPromptSubmit` and no tool calls. Treat the discriminator below as
+  resting on an unidentified launcher.
+
+  To settle it, the probe needs to record the full `/proc` ancestry and each
+  ancestor's `cmdline`, not just `comm` two levels up. That is work §7.2 needs
+  anyway for `konsole_pid`, so it is not a detour.
+
+## F. The probe now records full `/proc` ancestry, which hands §7.2 `konsole_pid`
+
+- **Assumed:** spec §7.2 treats finding `konsole_pid` as a walk to be written in
+  Phase 3, separate from the writer's own process handling.
+- **Observed:** the walk is one field on the record already being written, and
+  it reaches Konsole in five hops:
+
+  ```
+  60064:python3/59963:bash/6366:claude/5340:bash/5256:konsole/2293:systemd/1:systemd
+  ```
+
+  `claude` sits at hop 3, its Konsole shell at hop 4, `konsole` itself at hop 5.
+- **Test:** 2026-08-15, `probe.sh` invoked directly with a synthetic payload.
+- **Consequence:** `konsole_pid` needs no separate mechanism — the writer records
+  the chain and the evaluator reads it. It also gives open question 10 a real
+  discriminator: **absence of a `konsole` ancestor**, rather than the presence of
+  a `timeout` one, which only ever detected one particular launcher.
+
+  The walk records each ancestor's `comm` and deliberately **not** its `cmdline`.
+  A cmdline would name the launcher outright, but an ancestor of the form
+  `timeout 120 claude -p "<prompt>"` puts prompt text back into the capture
+  through the side door, which §4.2 forbids.
+
+  Capture is now mode 0600, set by `umask 077` in the probe and applied to the
+  existing file. It was 0644. The file holds the `cwd` of every session on the
+  machine, and spec §5 requires the real state file be 0600 — a probe leaking
+  what the writer protects argues against its own project.
+
+## E2. `Stop` and `Notification` do fire; the earlier "never fired" list was young
+
+- **Assumed:** from the first capture, `Stop` was listed among planned events
+  that never fired.
+- **Observed:** with 540 records rather than 51, `Stop` has fired 15 times and
+  `Notification` 12. The earlier absence was a short window, not a real gap.
+- **Consequence:** `waiting-input` from `Stop` (§4.4) is confirmed reachable.
+  Three planned events remain genuinely unobserved — `PermissionRequest`,
+  `Elicitation` and `StopFailure` — and all three need a scenario only a human
+  can trigger. Treat any "never fired" list as provisional until the capture has
+  covered a working session end to end.
 
 ## B. `PostToolBatch` fires after single tool calls, not only parallel batches
 
