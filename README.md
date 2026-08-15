@@ -110,12 +110,14 @@ and settled question 1 outright (finding 1); the non-interactive session turned
 out to be a Plasma quota widget spawning `timeout 5 claude -p "x"`, observed
 twice (finding K). Both are in `docs/findings.md` with their evidence.
 
-One decision is waiting on Justin, not on data: finding H proposes allocating a
-panel slot on first `UserPromptSubmit` rather than on `SessionStart`. That meets
-the "non-interactive sessions never claim a slot" requirement without detecting
-anything, and finding K shows the real non-interactive case emits no
-`UserPromptSubmit` at all. It changes §6, so Phase 1 should not build on it
-unruled.
+**Ruled 2026-08-16: a glyph appears when Justin first types into a session, not
+when the session opens.** A slot is claimed on the first `UserPromptSubmit`;
+`SessionStart` creates the record but renders nothing. This meets the
+"non-interactive sessions never claim a slot" requirement without detecting
+anything, so open question 10 is dissolved rather than answered — there is no
+interactivity test to get wrong. The accepted cost is that a session opened but
+not yet typed into is invisible; it is not waiting on you, and you are looking
+at it. Findings H and K.
 
 ## Naming
 

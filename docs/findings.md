@@ -20,14 +20,14 @@ the next session's reasoning sound.
 
 ## Open
 
-Four resolved (1, 3, 9, and 7.2's `konsole_pid` as a side effect). Seven
+Five resolved: 1, 3, 9, 7.2's `konsole_pid` as a side effect, and **10, which
+was dissolved rather than answered** — see the ruling in finding H. Six
 outstanding, of which two block Phase 1.
 
 | # | Question | Phase | State |
 |---|---|---|---|
 | 2 | What, if anything, fires on Esc interrupt? | 0 | **needs Justin** — interrupt, wait 90s |
 | 4 | Does `Notification`/`idle_prompt` fire after an interrupt? | 0 | **needs Justin** — same scenario as 2 |
-| 10 | Can a non-interactive session be reliably distinguished? | 0 | launcher now identified (finding K); **dissolvable** — finding H |
 | 5 | Correct Plasma 6 QML import and API for the executable data engine | 2 | not started |
 | 6 | Konsole D-Bus object paths, interfaces, and the PID field matching a tab | 3 | not started |
 | 7 | Can a non-focused process raise a Konsole window under KWin on Wayland? | 3 | not started |
@@ -35,9 +35,9 @@ outstanding, of which two block Phase 1.
 
 **2 and 4 are the only true Phase 1 blockers**, and they are one scenario, not
 two: interrupt a session with Esc and leave it 90 seconds. 1 is resolved
-(finding 1, observed rather than staged); 9 is resolved (finding G); 10 need not
-be answered at all if the slot rule in finding H is accepted, and finding K
-removes the last reason to doubt it.
+(finding 1, observed rather than staged); 9 is resolved (finding G); 10 is
+dissolved by Justin's ruling of 2026-08-16 and needs no detection mechanism at
+all.
 
 Phase 2 must not begin with any Phase 0 item unresolved.
 
@@ -127,8 +127,8 @@ Phase 2 must not begin with any Phase 0 item unresolved.
   emits `SessionStart` → `SessionEnd` and **no `UserPromptSubmit`** — despite
   being literally a `claude -p "x"` with a prompt in its argv. So H's rule,
   *allocate a slot on first `UserPromptSubmit`*, excludes the actual case
-  without classifying anything. Still Justin's ruling to make; the evidence for
-  it is now empirical rather than hypothetical.
+  without classifying anything. Justin ruled for it on 2026-08-16 on exactly
+  that evidence; question 10 is dissolved.
 
 ## L. `Notification` is neither unique per idle nor exclusively `idle_prompt`
 
@@ -398,9 +398,9 @@ Phase 2 must not begin with any Phase 0 item unresolved.
 - **`tty_nr` does not rescue it either.** A headless `claude -p` typed at a
   Konsole prompt has a perfectly good controlling tty. `tty_nr` answers "which
   terminal", not "is a human driving".
-- **Consequence:** withdraw the ancestry test for question 10. It stays open as
-  a *detection* problem — but the requirement behind it may not need detection
-  at all, see below.
+- **Consequence:** withdraw the ancestry test for question 10. It was left open
+  as a *detection* problem — but the requirement behind it never needed
+  detection at all, and the ruling below removes the question entirely.
 
 ### The requirement can be met without answering the question
 
@@ -419,8 +419,25 @@ session nobody prompts never claims one, which is the requirement, reached
 without classifying anything. `SessionStart` still creates the record — it is
 needed for `starting` — it just does not take a slot yet.
 
-This is a proposal, not a decision. It changes §6 and the `starting` state's
-meaning, so it needs Justin's ruling before Phase 1 builds on it.
+**Ruled by Justin, 2026-08-16: adopted.** A glyph appears when he first types
+into a session, not when the session opens. **Open question 10 is therefore
+dissolved, not answered** — the panel never asks whether a session is
+interactive, so it cannot get the answer wrong. Delete any remaining plan to
+detect it.
+
+What this settles for Phase 1:
+
+- `SessionStart` creates the record but claims no slot and renders nothing.
+- The first `UserPromptSubmit` claims the slot. Subsequent ones do not.
+- `SessionEnd`, or the liveness reap of finding I, releases it.
+- The `starting` state survives but is **not** a rendered state; it is the
+  window between `SessionStart` and the first prompt. §6 needs rewriting to say
+  so.
+
+The accepted cost, stated so Phase 2 does not treat it as a bug: a session
+Justin has opened but not yet typed into shows nothing on the panel. That is
+the intended behaviour — such a session is not waiting on him, and he is
+looking straight at it.
 
 ## F. The probe now records full `/proc` ancestry, which hands §7.2 `konsole_pid`
 
