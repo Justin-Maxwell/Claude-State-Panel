@@ -11,6 +11,7 @@ answer. Standard library only, same constraint as the writer it precedes.
 import argparse
 import collections
 import json
+import os
 import pathlib
 import sys
 import time
@@ -29,7 +30,10 @@ PLANNED = [
     "SessionEnd",
 ]
 
-DEFAULT_PATH = "/tmp/claude-hook-probe.jsonl"
+DEFAULT_PATH = os.path.join(
+    os.environ.get("XDG_STATE_HOME") or os.path.expanduser("~/.local/state"),
+    "claude-state-panel", "hook-probe.jsonl",
+)
 
 
 def load(path):
@@ -81,7 +85,8 @@ def summarise(records):
         if r.get("event") == "PreToolUse" and r.get("tool")
     )
     for tool, n in tools.most_common():
-        flag = "   <- open question 1" if tool == "AskUserQuestion" else ""
+        flag = "   <- open question 1, resolved: see finding 1" \
+            if tool == "AskUserQuestion" else ""
         print(f"  {n:5d}  {tool}{flag}")
     if not tools:
         print("  none")
@@ -125,13 +130,19 @@ def sequence(records, sid):
         print(f"{fmt_time(record['t']):>21}  {gap:>8}  {record.get('event')} {detail}".rstrip())
         previous = record["t"]
 
-    # The interrupt gap: spec 5.3. A trailing transient state with no terminal
-    # event is exactly the failure the staleness ceilings exist to cover.
+    # A trailing transient state with no terminal event. This used to be read as
+    # evidence for open question 2 -- "if this followed an Esc interrupt, nothing
+    # fires". Finding I withdraws that reading: three host crashes have now
+    # truncated five sessions exactly this way, and a crash is not an interrupt.
+    # The shapes are indistinguishable from the record alone, so the tool states
+    # what it saw and refuses to name a cause.
     tail = rows[-1].get("event")
-    if tail in ("PreToolUse", "PostToolUse", "UserPromptSubmit", "PostToolBatch"):
+    if tail not in ("SessionEnd",):
         idle = time.time() - rows[-1]["t"]
         print(f"\nends on {tail} with no terminal event, {idle:.0f}s ago")
-        print("if this followed an Esc interrupt, open question 2 is answered: nothing fires")
+        print("cause is NOT readable from this: an Esc interrupt (question 2), a")
+        print("host crash (finding I), and a still-live session all look like this.")
+        print("check liveness of the claude pid against boot_id before concluding.")
 
 
 def main():

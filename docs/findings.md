@@ -20,26 +20,217 @@ the next session's reasoning sound.
 
 ## Open
 
-Three resolved (3, 9, and 7.2's `konsole_pid` as a side effect). Six outstanding.
+Four resolved (1, 3, 9, and 7.2's `konsole_pid` as a side effect). Seven
+outstanding, of which two block Phase 1.
 
 | # | Question | Phase | State |
 |---|---|---|---|
-| 1 | Does `PreToolUse` fire for `AskUserQuestion`, and `PostToolUse` only after the answer? | 0 | **needs Justin** — answer one |
 | 2 | What, if anything, fires on Esc interrupt? | 0 | **needs Justin** — interrupt, wait 90s |
 | 4 | Does `Notification`/`idle_prompt` fire after an interrupt? | 0 | **needs Justin** — same scenario as 2 |
-| 10 | Can a non-interactive session be reliably distinguished? | 0 | open as detection; may be **dissolvable** — finding H |
+| 10 | Can a non-interactive session be reliably distinguished? | 0 | launcher now identified (finding K); **dissolvable** — finding H |
 | 5 | Correct Plasma 6 QML import and API for the executable data engine | 2 | not started |
 | 6 | Konsole D-Bus object paths, interfaces, and the PID field matching a tab | 3 | not started |
 | 7 | Can a non-focused process raise a Konsole window under KWin on Wayland? | 3 | not started |
 | 8 | Does Konsole honour an OSC title sequence given the tab-title format? | 3 | not started |
 
-**1, 2 and 4 are the only true Phase 1 blockers**, and all three are one
-five-minute sitting at the keyboard. 9 is resolved (finding G); 10 need not be
-answered at all if the slot rule in finding H is accepted.
+**2 and 4 are the only true Phase 1 blockers**, and they are one scenario, not
+two: interrupt a session with Esc and leave it 90 seconds. 1 is resolved
+(finding 1, observed rather than staged); 9 is resolved (finding G); 10 need not
+be answered at all if the slot rule in finding H is accepted, and finding K
+removes the last reason to doubt it.
 
 Phase 2 must not begin with any Phase 0 item unresolved.
 
 ## Resolved
+
+## 1. `PreToolUse` fires for `AskUserQuestion`; `PostToolUse` waits for the answer
+
+- **Assumed:** open question 1, the highest-value Phase 0 item. The spec's
+  `waiting-answer` state depends on `AskUserQuestion` bracketing the human's
+  thinking time — `PreToolUse` when the question is posed, `PostToolUse` only
+  once it is answered. If instead `PostToolUse` fired immediately, there would be
+  no event marking the wait and the state would be unreachable.
+- **Observed:** confirmed, with 3m17s of human latency sitting inside the
+  bracket. Session `e8356ad6`, 2026-08-16:
+
+  ```
+  10:31:07  PreToolUse         tool=AskUserQuestion
+  10:31:07  PermissionRequest  tool=AskUserQuestion   (+0.0s)
+  10:31:13  Notification                              (+6.0s)
+  10:34:24  PostToolUse        tool=AskUserQuestion   (+3m17s)
+  10:34:24  PostToolBatch
+  ```
+
+  The surrounding `Bash` calls in the same session close in ~2s, so the 3m17s is
+  the human, not the tool.
+- **Test:** not staged. This is an `AskUserQuestion` the assistant in an
+  unrelated session (`Glyph-Hunter`) happened to ask while the probe was live,
+  which is better evidence than a contrived one — nothing about the capture
+  arrangement provoked it.
+- **Date:** 2026-08-16
+- **Consequence:** **`waiting-answer` is implementable as specified.** The
+  transition is `PreToolUse` with `tool_name == "AskUserQuestion"` → enter, any
+  `PostToolUse` for the same tool → leave. `tool_name` is populated on both, per
+  the field table in `docs/hook-events.md`, so no matcher is needed — which
+  matters, because finding C established the matcher is not readable from the
+  payload.
+
+  Two bonuses fell out of the same record:
+
+  1. **`PermissionRequest` fires, and carries `tool_name`.** It was one of the
+     three events finding E2 listed as never observed. It fired simultaneously
+     with `PreToolUse` for the same tool, so it is *redundant* for
+     `waiting-answer` — `PreToolUse` alone is sufficient and arrives no later.
+     Note it did **not** fire for the allowlisted `Bash` calls around it, so it
+     marks a decision genuinely put to the user, not every tool call.
+  2. `Elicitation` and `StopFailure` remain unobserved.
+
+## K. The `timeout`-wrapped session is a Plasma quota widget, and it never prompts
+
+- **Assumed:** finding E recorded a 0.92s session under a `timeout` grandparent
+  and stated plainly that its launcher **could not be established** — user and
+  system timers, `crontab`, XDG autostart, shell profiles, `statusLine` and
+  Claude Code routines were all ruled out.
+- **Observed:** the ancestry field added in finding F names it. The same shape
+  recurred on 2026-08-16 as session `7d0ccdb5`, 0.95s, `cwd` `/home/justin`,
+  62 seconds after boot:
+
+  ```
+  4214:claude/4213:timeout/4198:bash/2836:plasmashell/2314:systemd/1:systemd
+  ```
+
+  `plasmashell` is the launcher's parent, which is why nothing in the timer or
+  cron layer ever matched. The exact line is in an installed plasmoid:
+
+  ```
+  ~/.local/share/plasma/plasmoids/org.kde.plasma.claudelimits/
+      contents/code/fetch_limits.sh:62
+
+      # On first boot the token may be stale. Spawn claude briefly to trigger
+      # a refresh.
+      timeout 5 claude -p "x"
+  ```
+
+  Every detail matches: the `timeout` grandparent, `plasmashell`'s `cwd`, the
+  sub-second lifetime against `timeout 5`, and firing ~60s after boot rather
+  than on a schedule — it is a fallback taken when the widget's headers come
+  back empty, which is the case immediately after boot.
+- **Date:** 2026-08-16
+- **Consequence:** this is the same widget the README's *Why* section cites for
+  consuming quota to measure quota. It is now also the machine's only known
+  producer of non-interactive Claude Code sessions, and it is **not** a
+  scheduled overnight run — finding E's "scheduled" label was the assumption it
+  admitted to being.
+
+  For open question 10 this is decisive in H's favour rather than against it.
+  The real-world non-interactive case, observed twice (`e7519d22`, `7d0ccdb5`),
+  emits `SessionStart` → `SessionEnd` and **no `UserPromptSubmit`** — despite
+  being literally a `claude -p "x"` with a prompt in its argv. So H's rule,
+  *allocate a slot on first `UserPromptSubmit`*, excludes the actual case
+  without classifying anything. Still Justin's ruling to make; the evidence for
+  it is now empirical rather than hypothetical.
+
+## L. `Notification` is neither unique per idle nor exclusively `idle_prompt`
+
+- **Assumed:** finding D observed `Notification` exactly 60s after `Stop` and
+  treated it as the `idle_prompt` edge.
+- **Observed:** across 15 `Notification` records, 13 are 60.1s after a `Stop` —
+  finding D holds, and holds tightly. The other two are not idle prompts:
+
+  ```
+  e8356ad6  10:31:13   6.0s after PermissionRequest, 1239s after the last Stop
+  1932f7f5  17:27:56   1088s after the idle_prompt that already fired, still idle
+  ```
+
+  The first is the permission/question prompt's own notification. The second is
+  a **repeat** — `Stop` 17:08:48, `idle_prompt` 17:09:48, then a second
+  `Notification` at 17:27:56 with no intervening activity; the next
+  `UserPromptSubmit` is not until 17:36:58.
+- **Date:** 2026-08-16
+- **Consequence:** `Notification` is a level, not an edge. A state machine
+  driven off it would re-enter `waiting-input` on a repeat and would confuse a
+  permission prompt with an idle one, since finding C established the matcher is
+  not readable from the payload. **Reinforces driving `waiting-input` from
+  `Stop`** (§4.4) — which is also a full minute faster.
+
+  It does not damage `Notification`'s candidacy as the interrupt backstop (open
+  question 4), but whatever consumes it there must be idempotent.
+
+## I. A host crash ends a session with no terminal event, and takes `/tmp` with it
+
+- **Assumed:** spec §5.3 treats a transient state with no terminal event as an
+  edge case the staleness ceilings cover. The probe's own analyser frames it as
+  "if this followed an Esc interrupt".
+- **Observed:** it is not an edge case here. The machine hard-crashed **three
+  times in 26 hours** — journal boots end at 15:36:49, 15:59:03 and 17:54:04,
+  each with **no shutdown sequence, no panic trace, and the kernel log already
+  silent**. Justin reports the cause as hardware. Every one took live sessions
+  with it:
+
+  ```
+  a9c23e29   last record 15:23, killed by the 15:36 crash   no SessionEnd
+  2314a502   last record 15:54, killed by the 15:59 crash   no SessionEnd
+  1932f7f5   last record 17:52, killed by the 17:54 crash   no SessionEnd
+  d980960e   last record 17:48, killed by the 17:54 crash   no SessionEnd
+  94863136   last record 16:47, killed by the 17:54 crash   no SessionEnd
+  ```
+
+  `SessionEnd` does fire on an ordinary exit (finding E saw one carrying
+  `reason: "other"`, and finding K a second). It cannot fire when the host dies.
+  **No hook event is guaranteed to close a session record.**
+
+  The third crash is the sharpest illustration. `1932f7f5`'s final record is a
+  `Notification` — the 60s idle prompt. A panel reading the file alone would
+  show that session waiting for input, correctly, and then go on showing it
+  forever: three sessions, three permanently-occupied slots, on a machine that
+  has since rebooted.
+- **Not** an answer to open question 2. A crash and an Esc interrupt are
+  different scenarios; do not read one as evidence for the other.
+- **Date:** 2026-08-15, amended 2026-08-16 after the third crash
+- **Consequence, two parts.**
+
+  **1. Reap by liveness, not by event.** The panel cannot wait for a terminal
+  event to free a slot. It must ask whether `claude_pid` is still alive — and
+  PID reuse makes bare `/proc/<pid>` existence insufficient across a reboot,
+  which is exactly when it matters. Two fields already available make the check
+  exact:
+
+  ```
+  /proc/sys/kernel/random/boot_id   de5c16fa-e207-4917-82d1-d0dee7b249c9
+  /proc/<pid>/stat field 22         starttime, in clock ticks since boot
+  ```
+
+  A record whose `boot_id` differs from the current one is dead by definition,
+  whatever its PID now points at. Within a boot, `(pid, starttime)` identifies a
+  process uniquely — a recycled PID has a later starttime. The boot_id above was
+  byte-identical to journald's boot 0 ID when this was written, so the panel and
+  the journal agree on what "this boot" means. Both fields cost one read; neither
+  needs a walk.
+
+  That boot_id is now `journalctl` boot **-1**; boot 0 reads
+  `d82fa378-be2b-48dc-956e-333403098bd6`. The value going stale in the document
+  is the mechanism working — every record written before 17:54:04 is now
+  identifiable as dead by a single string comparison, with no timeout to tune and
+  no ambiguity about a PID that may since have been reissued.
+
+  The staleness ceilings stay, but as a backstop for a *hung* session, not as
+  the mechanism for a dead one.
+
+  **2. The capture moved out of `/tmp`.** It is tmpfs on this machine, so each
+  crash wiped it — the 540-record base finding H reasoned from is gone, and the
+  capture was down to 34 records inside a 49-second window. The three
+  unresolved Phase 0 questions all need a scenario that has not happened yet,
+  so the capture has to outlive the box. It is now
+  `~/.local/state/claude-state-panel/hook-probe.jsonl`, mode 0600,
+  `XDG_STATE_HOME`-aware, still overridable with `CLAUDE_PROBE_OUT`. The 108
+  records then in `/tmp` were migrated rather than dropped.
+
+  **Verified, 2026-08-16.** The third crash arrived before this finding was even
+  committed, which tested the fix rather than the intention behind it. The
+  capture read back after the reboot at 618 records, mode 0600, still holding
+  every pre-crash record from the three sessions above — `/tmp/claude-hook-probe.jsonl`
+  no longer exists. Findings 1, K and L are all reasoned from records that the
+  old location would have destroyed.
 
 ## 3. In exec form, is `os.getppid()` the `claude` process?
 

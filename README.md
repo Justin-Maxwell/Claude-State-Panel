@@ -53,11 +53,11 @@ State lives at `$XDG_RUNTIME_DIR/claude-state-panel/state.json` — tmpfs, mode
 
 ## Status
 
-Phase 0 in progress, as of 2026-08-14. No implementation code written yet.
+Phase 0 in progress, as of 2026-08-16. No implementation code written yet.
 
 | Phase | Deliverable | State |
 |---|---|---|
-| 0 | `probe/` harness; resolve every `⟨verify⟩` item touching hooks | **In progress** — probe live, 7 findings recorded, 3 open questions need interactive scenarios |
+| 0 | `probe/` harness; resolve every `⟨verify⟩` item touching hooks | **In progress** — probe live, 621 records, 11 findings, **one interactive scenario left** |
 | 1 | writer + evaluator + `doctor`, fully testable headless | Not started — blocked on Phase 0 |
 | 2 | plasmoid compact + popup; click copies `cwd` | Not started |
 | 3 | Konsole tab focus via D-Bus | Not started |
@@ -72,13 +72,17 @@ outstanding rename pass.
 ## Resuming this work
 
 **The probe hooks are live in `~/.claude/settings.json` right now.** Every
-Claude Code session on this machine writes to `/tmp/claude-hook-probe.jsonl`,
-including scheduled overnight runs. Two consequences:
+Claude Code session on this machine writes to
+`~/.local/state/claude-state-panel/hook-probe.jsonl`, including scheduled
+overnight runs. Two consequences:
 
 1. `probe/probe.sh` is installed *instead of* the writer. **Delete its eleven
    registrations before Phase 1** registers the real writer, or both will run.
-2. `/tmp` is tmpfs. A reboot loses the capture. `docs/hook-events.md` holds the
-   distilled record, so nothing important is only in `/tmp`.
+2. The capture used to live in `/tmp`, which is tmpfs here. Two hard crashes on
+   2026-08-15 wiped it twice, taking the 540-record base finding H reasoned
+   from. It now lives under `XDG_STATE_HOME`; a third crash the same evening
+   confirmed it survives a reboot — see finding I. `CLAUDE_PROBE_OUT` still
+   overrides the path.
 3. The capture is mode 0600 — it holds the `cwd` of every session on the machine.
    `probe.sh` sets `umask 077`; if you ever see it at 0644, something recreated
    the file outside the probe.
@@ -96,9 +100,22 @@ probe/analyse.py                    # summary, and which planned events never fi
 probe/analyse.py --sid <8-char-id>  # one session's sequence, with gaps
 ```
 
-Three open questions need scenarios only a human can trigger — an
-`AskUserQuestion` answered, an Esc interrupt left for 90s, and a non-interactive
-session. They are listed with their tests in `docs/findings.md`.
+**One scenario stands between here and Phase 1:** interrupt a session with Esc,
+mid-thinking or mid-tool, and leave it 90 seconds. That single sitting answers
+open questions 2 and 4, which are the last Phase 1 blockers.
+
+The other two waited for the probe rather than for a person. An
+`AskUserQuestion` was answered in an unrelated session while the probe was live
+and settled question 1 outright (finding 1); the non-interactive session turned
+out to be a Plasma quota widget spawning `timeout 5 claude -p "x"`, observed
+twice (finding K). Both are in `docs/findings.md` with their evidence.
+
+One decision is waiting on Justin, not on data: finding H proposes allocating a
+panel slot on first `UserPromptSubmit` rather than on `SessionStart`. That meets
+the "non-interactive sessions never claim a slot" requirement without detecting
+anything, and finding K shows the real non-interactive case emits no
+`UserPromptSubmit` at all. It changes §6, so Phase 1 should not build on it
+unruled.
 
 ## Naming
 

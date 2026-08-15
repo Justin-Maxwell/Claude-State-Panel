@@ -21,12 +21,19 @@
 # machine, and spec 5 requires the real state file be 0600; a probe that leaks
 # what the writer protects would be arguing against its own project.
 #
+# Output lives under XDG_STATE_HOME, not /tmp. On this machine /tmp is tmpfs, and
+# two hard crashes on 2026-08-15 destroyed the capture twice -- including the 540
+# records finding H reasoned from. The three remaining Phase 0 questions all need
+# a scenario that has not happened yet, so the capture has to outlive the box.
+#
 # Exits 0 unconditionally. A probe must never block or annotate a tool call.
 
 set -u
 umask 077
 
-OUT="${CLAUDE_PROBE_OUT:-/tmp/claude-hook-probe.jsonl}"
+STATE_DIR="${XDG_STATE_HOME:-${HOME:-/tmp}/.local/state}/claude-state-panel"
+OUT="${CLAUDE_PROBE_OUT:-$STATE_DIR/hook-probe.jsonl}"
+mkdir -p "$(dirname "$OUT")" 2>/dev/null || true
 
 read_comm() {
     # $1 = pid. Empty string if unreadable.
