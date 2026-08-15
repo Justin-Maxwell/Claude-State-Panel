@@ -124,13 +124,23 @@ case and it is real today, not hypothetical.
 - [x] An `AskUserQuestion` tool call — open question 1 resolved (finding 1)
 - [x] A non-interactive session — observed twice; it is a Plasma widget, not a
       scheduled run (finding K)
-- [x] An Esc interrupt — observed 2026-08-16, questions 2 and 4 resolved:
-      **nothing fires at all** (finding 2 & 4). The mid-*tool* sub-case is still
-      unobserved; the interrupt landed between tool calls.
+- [x] An Esc interrupt — observed twice on 2026-08-16, both between tool calls
+      and mid-tool. Questions 2 and 4 resolved: **nothing fires at all**
+      (finding 2 & 4)
 - [ ] `Elicitation`
 - [ ] `StopFailure`, and how `error_kind` can be obtained (see finding C)
 
 Neither remaining item blocks Phase 1.
+
+## Twenty documented events are not registered
+
+The spec planned for eleven. The documented set is thirty-one. `MessageDisplay`,
+`PostToolUseFailure` and `PreCompact`/`PostCompact` all bear on this design, and
+`PostToolUseFailure` closes a real hole in the transition table. See finding M.
+
+An interrupt event is **not** among the missing twenty — none exists. `Stop` is
+documented not to run on user interrupt, and the feature request for one is open
+and unanswered.
 
 ## Registration currently in place
 

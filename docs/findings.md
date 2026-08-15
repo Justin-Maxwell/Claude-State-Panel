@@ -41,7 +41,54 @@ Phase 2 must not begin with any Phase 0 item unresolved.
 
 ## Resolved
 
-## 2 & 4. An Esc interrupt fires nothing at all, and no backstop ever arrives
+## M. No interrupt hook exists by design, and we are registered on 11 of 31 events
+
+- **Assumed:** finding 2 & 4 established empirically that an Esc interrupt fires
+  nothing, from a single session on one machine. That is thin evidence for a
+  permanent architectural decision — a local misconfiguration or a version quirk
+  would look identical.
+- **Observed:** it is documented behaviour, not an accident. The `Stop` hook's
+  own documentation states it *"Does not run if the stoppage occurred due to a
+  user interrupt."* Independently,
+  [anthropics/claude-code#9516](https://github.com/anthropics/claude-code/issues/9516)
+  requests a `UserInterrupt` event, is **open with no maintainer response**, and
+  dismisses timeout-based detection as unreliable — the same workaround this
+  project independently arrived at.
+- **Date:** 2026-08-16
+- **Consequence:** stop looking for an interrupt event. The measurement and the
+  documentation agree, so finding 2 & 4 rests on two independent legs and the
+  staleness ceiling is not a stopgap awaiting a better event.
+
+### The larger miss: the spec planned for 11 events; there are 31
+
+Registered: `SessionStart`, `UserPromptSubmit`, `PreToolUse`, `PostToolUse`,
+`PostToolBatch`, `PermissionRequest`, `Elicitation`, `Stop`, `StopFailure`,
+`SessionEnd`, `Notification`. **Twenty documented events are unregistered**, and
+three bear directly on this design:
+
+| Event | Why it matters |
+|---|---|
+| `PostToolUseFailure` | fires after a tool call **fails** — we registered only the success event |
+| `MessageDisplay` | fires *while assistant text is displayed*; a heartbeat during thinking, not just at tool boundaries |
+| `PreCompact` / `PostCompact` | compaction may present as a long silence and read as false-stale |
+
+**`PostToolUseFailure` is a live defect in the planned transition table**, which
+assumes `PostToolUse` follows every `PreToolUse`. It does not: the capture holds
+354 `PreToolUse` against 348 `PostToolUse`. Unregistered, a failed tool leaves a
+session rendering `working` until some later event rescues it.
+
+`MessageDisplay` is the more interesting one. The ceiling of finding 2 & 4 has
+to sit at ≥180s only because a working session can go 117s without emitting
+anything. A heartbeat during text output would collapse that window to seconds
+and sharpen `working` against `interrupted` — and if it fires for Claude Code's
+own `[Request interrupted by user]` notice, it *is* the missing interrupt
+signal.
+
+**Not yet registered, deliberately.** `MessageDisplay` may fire per text chunk,
+and every hook registration is a process spawn. A spawn-per-chunk handler on a
+machine already suffering hardware crashes (see finding I) is worth measuring
+under control rather than switching on and hoping. The other three are
+low-frequency and carry no such risk.
 
 - **Assumed:** open questions 2 and 4, the last two Phase 1 blockers. §5.3 hoped
   `Notification`/`idle_prompt` might serve as an interrupt backstop, giving the
@@ -65,11 +112,23 @@ Phase 2 must not begin with any Phase 0 item unresolved.
   a real absence, not an unregistered hook.
 - **Test:** unstaged, in the session that was writing this file. 380s is six
   times the `idle_prompt` latency, so the window is not marginal.
-- **Untested sub-case, stated so it is not assumed away:** the interrupt landed
-  *between* tool calls, after `PostToolBatch`. Whether `PostToolUse` still fires
-  for a tool killed mid-flight is **not** answered here, and it decides whether
-  an interrupt during a long `Bash` leaves the record on `PreToolUse` or
-  `PostToolUse`. Both are transient, so the consequence below holds either way.
+- **The mid-tool sub-case, answered the same day.** The first observation landed
+  *between* tool calls, leaving open whether a tool killed mid-flight still
+  reports completion. It does not. Justin let an `AskUserQuestion` sit, then
+  escaped it:
+
+  ```
+  11:01:45  PreToolUse         AskUserQuestion
+  11:01:45  PermissionRequest  AskUserQuestion
+  11:01:51  Notification                        (+6.0s)
+              … 1073.6 seconds, nothing whatsoever …
+  11:19:45  UserPromptSubmit
+  ```
+
+  **No `PostToolUse`, no `PostToolBatch`, no `Stop`.** An interrupted tool call
+  emits nothing, so the record stays on `PreToolUse` indefinitely. Both interrupt
+  shapes are now observed and both freeze the record; only *which* transient
+  state it freezes in differs.
 - **Date:** 2026-08-16
 - **Consequence — this is the finding that decides how §5.3 is built.**
 
@@ -116,6 +175,31 @@ Phase 2 must not begin with any Phase 0 item unresolved.
   `stale`/`unknown` rendering rather than silently claiming `waiting-input`,
   since the latter would lie in the thinking-hard case. Phase 2 rendering, not a
   Phase 1 blocker.
+
+  **6. `waiting-answer` has no ceiling that works, and this is the one state
+  hook events cannot recover.** The ceiling in point 4 works for `thinking`
+  because prolonged silence there is evidence of *something wrong*. It cannot
+  work for `waiting-answer`, because waiting indefinitely is that state's
+  correct behaviour — a real question left pending for 18 minutes while Justin
+  is away is not stale, it is working exactly as intended. An escaped question
+  produces a byte-identical record.
+
+  The failure this creates is the panel's worst: a glyph reporting *"this
+  session needs your answer"*, pointing at a question that no longer exists,
+  indefinitely. Clicking through lands on a session asking nothing. That is
+  strictly worse than showing nothing at all, because it spends the user's
+  trust in the one signal the widget exists to give.
+
+  No hook event can fix this — see finding M, which establishes that no
+  interrupt event exists at any version. Two candidate escapes, neither yet
+  tested:
+
+  - `MessageDisplay` (unregistered) may fire when Claude Code displays its
+    `[Request interrupted by user]` notice. If it does, it is not merely a
+    heartbeat but the interrupt signal itself.
+  - The session transcript under `~/.claude/projects/` records the interrupt.
+    Reading it is local and credential-free, but heavier than a hook and needs
+    care against §4.2, which forbids prompt text reaching the state file.
 
 - **A caution on the earlier record.** Justin reports that some of the
   2026-08-15 crashes followed Esc interrupts. Yesterday's truncated tails may
@@ -228,6 +312,13 @@ Phase 2 must not begin with any Phase 0 item unresolved.
   a **repeat** — `Stop` 17:08:48, `idle_prompt` 17:09:48, then a second
   `Notification` at 17:27:56 with no intervening activity; the next
   `UserPromptSubmit` is not until 17:36:58.
+
+  **The 6.0s permission delay is now confirmed, and the repeat is not a regular
+  nag.** A second `AskUserQuestion` on 2026-08-16 reproduced the offset exactly:
+  `PermissionRequest` 11:01:45 → `Notification` 11:01:51, the same 6.0s. That
+  question then sat unanswered for 1073s and **no further `Notification` ever
+  came**, so the 17:27:56 repeat is occasional rather than periodic. Do not
+  build a timer on it.
 - **Date:** 2026-08-16
 - **Consequence:** `Notification` is a level, not an edge. A state machine
   driven off it would re-enter `waiting-input` on a repeat and would confuse a

@@ -57,7 +57,7 @@ Phase 0 in progress, as of 2026-08-16. No implementation code written yet.
 
 | Phase | Deliverable | State |
 |---|---|---|
-| 0 | `probe/` harness; resolve every `⟨verify⟩` item touching hooks | **Complete for Phase 1 purposes** — probe live, 12 findings, every blocker resolved |
+| 0 | `probe/` harness; resolve every `⟨verify⟩` item touching hooks | **Complete for Phase 1 purposes** — probe live, 13 findings, every blocker resolved |
 | 1 | writer + evaluator + `doctor`, fully testable headless | **Unblocked, not started** |
 | 2 | plasmoid compact + popup; click copies `cwd` | Not started |
 | 3 | Konsole tab focus via D-Bus | Not started |
@@ -113,7 +113,16 @@ transient state with a live, healthy process, so the liveness reap cannot touch
 it and the staleness ceiling is the *only* mechanism that recovers it. The
 ceiling therefore belongs in Phase 1, not in a later safety pass, and it must
 clear 180s — measured against 882 gaps in which sessions were provably still
-working, the longest being 116.8s.
+working, the longest being 116.8s. This is confirmed behaviour, not a local
+quirk: `Stop` is documented not to run on user interrupt, and the request for an
+interrupt event is open and unanswered (finding M).
+
+**One known limitation, recorded before it is built rather than after.** An
+`AskUserQuestion` that the user escapes rather than answers is indistinguishable
+from one still waiting — waiting indefinitely is that state's *correct*
+behaviour, so no timeout can separate them. The panel would report "needs your
+answer" for a question that no longer exists. Two untested escapes are noted in
+finding 2 & 4; until one works, this state is the widget's weakest claim.
 
 **Ruled 2026-08-16: a glyph appears when Justin first types into a session, not
 when the session opens.** A slot is claimed on the first `UserPromptSubmit`;
