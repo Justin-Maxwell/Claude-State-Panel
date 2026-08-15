@@ -57,8 +57,8 @@ Phase 0 in progress, as of 2026-08-16. No implementation code written yet.
 
 | Phase | Deliverable | State |
 |---|---|---|
-| 0 | `probe/` harness; resolve every `⟨verify⟩` item touching hooks | **In progress** — probe live, 621 records, 11 findings, **one interactive scenario left** |
-| 1 | writer + evaluator + `doctor`, fully testable headless | Not started — blocked on Phase 0 |
+| 0 | `probe/` harness; resolve every `⟨verify⟩` item touching hooks | **Complete for Phase 1 purposes** — probe live, 12 findings, every blocker resolved |
+| 1 | writer + evaluator + `doctor`, fully testable headless | **Unblocked, not started** |
 | 2 | plasmoid compact + popup; click copies `cwd` | Not started |
 | 3 | Konsole tab focus via D-Bus | Not started |
 | 4 | `error` / `rate_limit` rendering | Not started |
@@ -100,15 +100,20 @@ probe/analyse.py                    # summary, and which planned events never fi
 probe/analyse.py --sid <8-char-id>  # one session's sequence, with gaps
 ```
 
-**One scenario stands between here and Phase 1:** interrupt a session with Esc,
-mid-thinking or mid-tool, and leave it 90 seconds. That single sitting answers
-open questions 2 and 4, which are the last Phase 1 blockers.
+**Phase 0 has no blockers left.** All three scenarios that needed a human
+arrived on 2026-08-16. An `AskUserQuestion` was answered in an unrelated session
+while the probe was live, settling question 1 (finding 1). The non-interactive
+session turned out to be a Plasma quota widget spawning `timeout 5 claude -p
+"x"`, observed twice (finding K). And an Esc interrupt held for 380 seconds
+settled questions 2 and 4 together: **nothing fires at all** — no `Stop`, no
+`Notification`, no terminal event (finding 2 & 4).
 
-The other two waited for the probe rather than for a person. An
-`AskUserQuestion` was answered in an unrelated session while the probe was live
-and settled question 1 outright (finding 1); the non-interactive session turned
-out to be a Plasma quota widget spawning `timeout 5 claude -p "x"`, observed
-twice (finding K). Both are in `docs/findings.md` with their evidence.
+That last one is the load-bearing result. An interrupted session freezes in a
+transient state with a live, healthy process, so the liveness reap cannot touch
+it and the staleness ceiling is the *only* mechanism that recovers it. The
+ceiling therefore belongs in Phase 1, not in a later safety pass, and it must
+clear 180s — measured against 882 gaps in which sessions were provably still
+working, the longest being 116.8s.
 
 **Ruled 2026-08-16: a glyph appears when Justin first types into a session, not
 when the session opens.** A slot is claimed on the first `UserPromptSubmit`;

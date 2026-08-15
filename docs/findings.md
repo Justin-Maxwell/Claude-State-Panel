@@ -20,28 +20,110 @@ the next session's reasoning sound.
 
 ## Open
 
-Five resolved: 1, 3, 9, 7.2's `konsole_pid` as a side effect, and **10, which
-was dissolved rather than answered** — see the ruling in finding H. Six
-outstanding, of which two block Phase 1.
+**Every Phase 1 blocker is resolved. Phase 1 is unblocked as of 2026-08-16.**
+
+Seven resolved: 1, 2, 3, 4, 9, 7.2's `konsole_pid` as a side effect, and **10,
+which was dissolved rather than answered** — see the ruling in finding H. Four
+outstanding, none of which block Phase 1.
 
 | # | Question | Phase | State |
 |---|---|---|---|
-| 2 | What, if anything, fires on Esc interrupt? | 0 | **needs Justin** — interrupt, wait 90s |
-| 4 | Does `Notification`/`idle_prompt` fire after an interrupt? | 0 | **needs Justin** — same scenario as 2 |
 | 5 | Correct Plasma 6 QML import and API for the executable data engine | 2 | not started |
 | 6 | Konsole D-Bus object paths, interfaces, and the PID field matching a tab | 3 | not started |
 | 7 | Can a non-focused process raise a Konsole window under KWin on Wayland? | 3 | not started |
 | 8 | Does Konsole honour an OSC title sequence given the tab-title format? | 3 | not started |
 
-**2 and 4 are the only true Phase 1 blockers**, and they are one scenario, not
-two: interrupt a session with Esc and leave it 90 seconds. 1 is resolved
-(finding 1, observed rather than staged); 9 is resolved (finding G); 10 is
-dissolved by Justin's ruling of 2026-08-16 and needs no detection mechanism at
-all.
+Two hook events remain unobserved — `Elicitation` and `StopFailure` — but
+neither was ever a blocker. `StopFailure` gates Phase 4 rendering only, and
+finding C already established how `error_kind` must reach it.
 
 Phase 2 must not begin with any Phase 0 item unresolved.
 
 ## Resolved
+
+## 2 & 4. An Esc interrupt fires nothing at all, and no backstop ever arrives
+
+- **Assumed:** open questions 2 and 4, the last two Phase 1 blockers. §5.3 hoped
+  `Notification`/`idle_prompt` might serve as an interrupt backstop, giving the
+  panel *some* event to react to when a turn is abandoned.
+- **Observed:** nothing fires. Justin pressed Esc mid-turn in session
+  `69e86564` on 2026-08-16 and left it. The session's last event before the
+  interrupt was `PostToolBatch` at 10:45:54; the next record of any kind is his
+  resuming `UserPromptSubmit` at 10:52:15.
+
+  ```
+  10:45:54  PostToolBatch
+              … 380.2 seconds, no records of any kind …
+  10:52:15  UserPromptSubmit
+  ```
+
+  No `Stop`. No `Notification`. The 60s `idle_prompt` of finding D would have
+  landed at ~10:46:54 and did not.
+- **Control — this is what makes the absence mean anything.** Both hooks are
+  demonstrably live *in this same session*: it emitted `Notification` at
+  10:42:21 and `Stop` at 10:43:59, minutes before the interrupt. The silence is
+  a real absence, not an unregistered hook.
+- **Test:** unstaged, in the session that was writing this file. 380s is six
+  times the `idle_prompt` latency, so the window is not marginal.
+- **Untested sub-case, stated so it is not assumed away:** the interrupt landed
+  *between* tool calls, after `PostToolBatch`. Whether `PostToolUse` still fires
+  for a tool killed mid-flight is **not** answered here, and it decides whether
+  an interrupt during a long `Bash` leaves the record on `PreToolUse` or
+  `PostToolUse`. Both are transient, so the consequence below holds either way.
+- **Date:** 2026-08-16
+- **Consequence — this is the finding that decides how §5.3 is built.**
+
+  **1. Question 4 is answered no.** `Notification` is not an interrupt backstop
+  and there is nothing to register for one. Its only two observed roles remain
+  the 60s idle prompt (finding D) and permission prompts (finding L).
+
+  **2. An interrupted session freezes in a transient state.** Its record says
+  `thinking` — or `working`, in the mid-tool sub-case — and nothing will ever
+  move it. The panel would show that session **busy while it is in fact waiting
+  for Justin**, which is precisely the inversion the product exists to prevent.
+
+  **3. Crash and interrupt need different mechanisms, and now separate
+  cleanly.** They were lumped together in §5.3 as "a transient state with no
+  terminal event". They are not the same failure:
+
+  ```
+  host crash      process gone   -> boot_id + (pid, starttime) reap, finding I
+  Esc interrupt   process alive  -> time-based staleness ceiling, the only option
+  ```
+
+  The liveness check of finding I cannot help here: the `claude` process is
+  alive, healthy, and correct to be idle. **So the staleness ceiling is not a
+  backstop — for interrupts it is the entire mechanism**, and it must be built
+  in Phase 1 rather than deferred as a safety net.
+
+  **4. How high the ceiling must sit, measured rather than guessed.** From 882
+  gaps in which the session was *provably* still working — the gap ends in a
+  further work event, not in a human typing:
+
+  ```
+  p50    0.3s     p90   15.6s     p99   56.4s     max  116.8s
+  ```
+
+  A ceiling under ~2 minutes will mark genuinely working sessions stale. **≥180s
+  is the defensible floor.** Caveat: this distribution is right-censored, since
+  a longer pause that happened to be interrupted is by construction excluded, so
+  treat 116.8s as a lower bound on the true maximum. A long agent run or a slow
+  network tool could exceed it.
+
+  **5. What to render at the ceiling is a real question, not a detail.** The
+  panel cannot distinguish "interrupted, waiting for you" from "thinking hard
+  for four minutes" — the record looks identical. Recommend a distinct
+  `stale`/`unknown` rendering rather than silently claiming `waiting-input`,
+  since the latter would lie in the thinking-hard case. Phase 2 rendering, not a
+  Phase 1 blocker.
+
+- **A caution on the earlier record.** Justin reports that some of the
+  2026-08-15 crashes followed Esc interrupts. Yesterday's truncated tails may
+  therefore be interrupt-then-crash rather than crash alone, and cannot be
+  mined as interrupt evidence retrospectively. This is exactly why `analyse.py`
+  no longer names a cause for a truncated session. This finding rests only on
+  the 2026-08-16 interrupt, which was observed end to end with the process
+  surviving.
 
 ## 1. `PreToolUse` fires for `AskUserQuestion`; `PostToolUse` waits for the answer
 

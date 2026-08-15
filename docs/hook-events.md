@@ -83,6 +83,19 @@ PostToolBatch                 10:34:24
 implementable. `PermissionRequest` adds nothing `PreToolUse` has not already
 said, and did not fire for the allowlisted `Bash` calls either side. Finding 1.
 
+An Esc interrupt, mid-turn:
+
+```
+PostToolBatch     10:45:54
+      … 380.2s, nothing whatsoever …
+UserPromptSubmit  10:52:15   (the human resuming, not the interrupt)
+```
+
+No `Stop`, no `Notification`, no terminal event of any kind. The same session
+had emitted both a `Notification` and a `Stop` minutes earlier, so the hooks
+were live — the silence is real. This is why the staleness ceiling is the whole
+mechanism for interrupts rather than a safety net; see finding 2 & 4.
+
 A non-interactive session, in full:
 
 ```
@@ -111,10 +124,13 @@ case and it is real today, not hypothetical.
 - [x] An `AskUserQuestion` tool call — open question 1 resolved (finding 1)
 - [x] A non-interactive session — observed twice; it is a Plasma widget, not a
       scheduled run (finding K)
+- [x] An Esc interrupt — observed 2026-08-16, questions 2 and 4 resolved:
+      **nothing fires at all** (finding 2 & 4). The mid-*tool* sub-case is still
+      unobserved; the interrupt landed between tool calls.
 - [ ] `Elicitation`
 - [ ] `StopFailure`, and how `error_kind` can be obtained (see finding C)
-- [ ] An Esc interrupt, mid-thinking and mid-tool — open questions 2 and 4, the
-      **only remaining Phase 1 blockers**
+
+Neither remaining item blocks Phase 1.
 
 ## Registration currently in place
 
