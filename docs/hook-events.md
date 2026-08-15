@@ -144,9 +144,20 @@ and unanswered.
 
 ## Registration currently in place
 
-Ten events plus `Notification`, all exec form with `"args": []`, pointing at
-`probe/probe.sh` in the repo checkout. The pre-existing `notify-send` handler on
-`Notification` was preserved and now sits alongside the probe.
+**Fifteen events**, all exec form with `"args": []`, pointing at `probe/probe.sh`
+in the repo checkout. The pre-existing `notify-send` handler on `Notification`
+was preserved and now sits alongside the probe.
+
+Added 2026-08-16: `PostToolUseFailure`, `PermissionDenied`, `PreCompact`,
+`PostCompact`. `MessageDisplay` was deliberately not added — see finding M.
+
+A failed tool call, verified against a deliberately failing command:
+
+```
+PreToolUse          Bash   11:23:36
+PostToolUseFailure  Bash   11:23:38   <- PostToolUse does NOT fire
+PostToolBatch              11:23:38
+```
 
 **The probe is installed *instead of* the writer.** Delete these registrations
 before Phase 1 registers the real writer, or both will run.

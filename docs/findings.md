@@ -72,10 +72,23 @@ three bear directly on this design:
 | `MessageDisplay` | fires *while assistant text is displayed*; a heartbeat during thinking, not just at tool boundaries |
 | `PreCompact` / `PostCompact` | compaction may present as a long silence and read as false-stale |
 
-**`PostToolUseFailure` is a live defect in the planned transition table**, which
-assumes `PostToolUse` follows every `PreToolUse`. It does not: the capture holds
-354 `PreToolUse` against 348 `PostToolUse`. Unregistered, a failed tool leaves a
-session rendering `working` until some later event rescues it.
+`PostToolUseFailure` was registered and **tested against a deliberately failing
+command** the same day. The result corrects a claim made earlier in this finding:
+
+```
+11:23:36  PreToolUse          Bash
+11:23:38  PostToolUseFailure  Bash     <- fires
+11:23:38  PostToolBatch                <- still fires, +0.1s
+```
+
+`PostToolUse` does **not** fire for a failed call, which is what the planned
+transition table assumed, and it explains part of the 354-vs-348 `PreToolUse`/
+`PostToolUse` deficit in the capture. But `PostToolBatch` fires regardless, so
+the record moves to `thinking` a tenth of a second later. **This is a fidelity
+gap, not the state-machine hole it was first described as** — no session gets
+stuck. Registering it remains correct: it distinguishes a failed call from a
+successful one, which §4.4's `error` rendering will want in Phase 4, and it
+keeps the writer honest about what it observed.
 
 `MessageDisplay` is the more interesting one. The ceiling of finding 2 & 4 has
 to sit at ≥180s only because a working session can go 117s without emitting
@@ -84,11 +97,18 @@ and sharpen `working` against `interrupted` — and if it fires for Claude Code'
 own `[Request interrupted by user]` notice, it *is* the missing interrupt
 signal.
 
-**Not yet registered, deliberately.** `MessageDisplay` may fire per text chunk,
-and every hook registration is a process spawn. A spawn-per-chunk handler on a
-machine already suffering hardware crashes (see finding I) is worth measuring
-under control rather than switching on and hoping. The other three are
-low-frequency and carry no such risk.
+**Registered 2026-08-16:** `PostToolUseFailure`, `PermissionDenied`,
+`PreCompact`, `PostCompact` — all low-frequency, all pointing at the same
+`probe.sh`. Fifteen events now registered. Back them out by deleting those four
+keys from `~/.claude/settings.json`.
+
+**`MessageDisplay` deliberately left off.** It may fire per text chunk, and every
+hook registration is a process spawn. A spawn-per-chunk handler on a machine
+already suffering hardware crashes (see finding I) is worth measuring under
+control rather than switching on and hoping — and the measurement itself is the
+hazard, since a per-token rate would spawn hundreds of processes before it could
+be observed and reverted. Worth doing, but as a deliberate experiment with a
+short-lived throwaway handler, not by adding it to the live probe.
 
 - **Assumed:** open questions 2 and 4, the last two Phase 1 blockers. §5.3 hoped
   `Notification`/`idle_prompt` might serve as an interrupt backstop, giving the
