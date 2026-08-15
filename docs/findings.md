@@ -20,22 +20,24 @@ the next session's reasoning sound.
 
 ## Open
 
-One resolved. Eight outstanding from spec §13, plus one new item.
+Three resolved (3, 9, and 7.2's `konsole_pid` as a side effect). Six outstanding.
 
-| # | Question | Phase |
-|---|---|---|
-| 1 | Does `PreToolUse` fire for `AskUserQuestion`, and `PostToolUse` only after the answer? | 0 |
-| 2 | What, if anything, fires on Esc interrupt? | 0 |
-| 4 | Does `Notification`/`idle_prompt` fire after an interrupt? | 0 |
-| 10 | Can a non-interactive session be reliably distinguished from an interactive one? — narrowed by finding E; `source` is ruled out | 0 |
-| 5 | Correct Plasma 6 QML import and API for the executable data engine | 2 |
-| 6 | Konsole D-Bus object paths, interfaces, and the PID field matching a tab | 3 |
-| 7 | Can a non-focused process raise a Konsole window under KWin on Wayland? | 3 |
-| 8 | Does Konsole honour an OSC title sequence given the tab-title format? | 3 |
-| 9 | Reliable way to derive a session's `tty` from `/proc` | 0 |
+| # | Question | Phase | State |
+|---|---|---|---|
+| 1 | Does `PreToolUse` fire for `AskUserQuestion`, and `PostToolUse` only after the answer? | 0 | **needs Justin** — answer one |
+| 2 | What, if anything, fires on Esc interrupt? | 0 | **needs Justin** — interrupt, wait 90s |
+| 4 | Does `Notification`/`idle_prompt` fire after an interrupt? | 0 | **needs Justin** — same scenario as 2 |
+| 10 | Can a non-interactive session be reliably distinguished? | 0 | open as detection; may be **dissolvable** — finding H |
+| 5 | Correct Plasma 6 QML import and API for the executable data engine | 2 | not started |
+| 6 | Konsole D-Bus object paths, interfaces, and the PID field matching a tab | 3 | not started |
+| 7 | Can a non-focused process raise a Konsole window under KWin on Wayland? | 3 | not started |
+| 8 | Does Konsole honour an OSC title sequence given the tab-title format? | 3 | not started |
 
-Items 1, 2, 4, 9 and 10 block Phase 1. Phase 2 must not begin with any Phase 0
-item unresolved.
+**1, 2 and 4 are the only true Phase 1 blockers**, and all three are one
+five-minute sitting at the keyboard. 9 is resolved (finding G); 10 need not be
+answered at all if the slot rule in finding H is accepted.
+
+Phase 2 must not begin with any Phase 0 item unresolved.
 
 ## Resolved
 
@@ -159,6 +161,75 @@ item unresolved.
   To settle it, the probe needs to record the full `/proc` ancestry and each
   ancestor's `cmdline`, not just `comm` two levels up. That is work §7.2 needs
   anyway for `konsole_pid`, so it is not a detour.
+
+## G. `tty` comes from `tty_nr`, and must be read off `claude`, not off the hook
+
+- **Assumed:** open question 9, "reliable way to derive a session's `tty` from
+  `/proc`", listed as unresolved and blocking Phase 1.
+- **Observed:** field 7 of `/proc/<pid>/stat` is `tty_nr`, and decodes cleanly.
+  For the live session, `tty_nr` 34817 → major 136, minor 1 → `/dev/pts/1`,
+  independently confirmed by `readlink /proc/<pid>/fd/0` → `/dev/pts/1`. Two
+  methods, same answer.
+
+  ```
+  major = (tty_nr >> 8) & 0xfff          # 136 == pts
+  minor = (tty_nr & 0xff) | ((tty_nr >> 12) & 0xfff00)
+  ```
+
+- **The trap:** the hook's *own* process has **no controlling tty**.
+
+  ```
+  63161:python3   tty_nr=0      NO CONTROLLING TTY
+  63060:bash      tty_nr=0      NO CONTROLLING TTY
+   6366:claude    tty_nr=34817  /dev/pts/1
+   5340:bash      tty_nr=34817  /dev/pts/1
+   5256:konsole   tty_nr=0      NO CONTROLLING TTY
+  ```
+
+  A writer that reads its own `tty_nr` gets 0 every time and concludes every
+  session is headless. It must read `/proc/$(os.getppid())/stat` — the `claude`
+  process, per finding 3.
+
+  Note `konsole` itself is also 0. The tty exists between `claude` and its
+  shell, not above it.
+- **Test:** 2026-08-15, live session, walk from a hook-spawned process to PID 1.
+- **Consequence:** **open question 9 resolved.** §7.2 needs no new mechanism.
+
+## H. The `konsole`-ancestor test for question 10 is unsound; don't build on it
+
+- **Assumed:** finding F proposed absence of a `konsole` ancestor as the
+  discriminator for a non-interactive session, replacing the `timeout`
+  grandparent.
+- **Observed:** it fails on nesting. Any `claude -p` launched *from* an
+  interactive session inherits that session's whole chain, `konsole` included,
+  and reads as interactive. Confirmed against the live chain, which contains
+  `konsole` at hop 5 — anything spawned below it inherits that.
+- **`tty_nr` does not rescue it either.** A headless `claude -p` typed at a
+  Konsole prompt has a perfectly good controlling tty. `tty_nr` answers "which
+  terminal", not "is a human driving".
+- **Consequence:** withdraw the ancestry test for question 10. It stays open as
+  a *detection* problem — but the requirement behind it may not need detection
+  at all, see below.
+
+### The requirement can be met without answering the question
+
+Spec: *"Non-interactive sessions never claim a slot"* (Justin's direction,
+2026-08-14). That is a statement about slots, not about detection.
+
+Observed shapes, from 540 records:
+
+```
+e7519d22   SessionStart -> SessionEnd, 0.92s, no UserPromptSubmit, no tools
+a9c23e29   SessionStart -> 16x UserPromptSubmit, 184 PreToolUse, ...
+```
+
+So: **allocate a slot on first `UserPromptSubmit`, not on `SessionStart`.** A
+session nobody prompts never claims one, which is the requirement, reached
+without classifying anything. `SessionStart` still creates the record — it is
+needed for `starting` — it just does not take a slot yet.
+
+This is a proposal, not a decision. It changes §6 and the `starting` state's
+meaning, so it needs Justin's ruling before Phase 1 builds on it.
 
 ## F. The probe now records full `/proc` ancestry, which hands §7.2 `konsole_pid`
 
