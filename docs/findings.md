@@ -85,7 +85,7 @@ Phase 2 must not begin with any Phase 0 item unresolved.
   | which sessions exist | `SessionStart`/`SessionEnd` + liveness reap | the array |
   | `claude_pid` | `os.getppid()`, finding 3 | `pid` |
   | `cwd` | payload field | `cwd` |
-  | interactive or not | open question 10, three findings, unsolved | `kind` |
+  | interactive or not | open question 10, three findings, unsolved | `kind`, **but only partly — see below** |
   | working / idle | transition table | `status` |
   | blocked on the user | `PreToolUse`+`Stop` inference | `status`+`waitingFor` |
   | label | derived from `cwd`, collision-disambiguated | `name` |
@@ -114,6 +114,33 @@ Phase 2 must not begin with any Phase 0 item unresolved.
   13:21:22  status='waiting'  waitingFor='input needed'
   13:29:28  status='busy'     waitingFor=None      <- cleared on answer
   ```
+
+  **Correction, same day: `kind` does not implement Justin's slot ruling.** It
+  was shipped in the first Phase 1 commit as though it did. A headless
+  `claude -p "x"` — reproducing exactly what the claudelimits widget runs, per
+  finding K — reports:
+
+  ```
+  6ea10854   kind='interactive'   status=None   name='claude-state-panel-42'
+  ```
+
+  **`kind: "interactive"`, byte-identical to a session Justin is typing into.**
+  Had this not been checked, the widget's once-per-boot session would have
+  claimed a panel slot — the exact outcome the 2026-08-14 ruling exists to
+  prevent.
+
+  The only observed difference is that it never reports a `status` before
+  exiting. The evaluator now drops any session without one, which is defensible
+  on its own terms — a session that has not said what it is doing gives the
+  panel nothing to assert — and happens to exclude this case. Note the split it
+  introduces: a *missing* status is dropped, an *unrecognised* one is still
+  shown as `unknown` with a warning, because "hasn't spoken yet" and "doing
+  something I have no name for" are different.
+
+  Honest limits: one run, three samples. A `claude -p` that lived long enough to
+  report a status would take a slot while it ran. The real case lives under a
+  second against a poll interval of seconds, so the exposure is at most a
+  one-frame flicker.
 
   So `waitingFor` takes `"input needed"` for a question and
   `"permission prompt"` for a permission decision — exactly the split §6 needs

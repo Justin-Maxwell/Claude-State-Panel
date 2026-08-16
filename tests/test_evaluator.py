@@ -91,6 +91,29 @@ class TestNonInteractiveSessions(unittest.TestCase):
         model = evaluator.evaluate([support.session(kind="something-else")], now=NOW)
         self.assertEqual([], model["sessions"])
 
+    def test_a_headless_claude_p_run_claims_no_slot(self):
+        """The case `kind` does NOT catch. Verified 2026-08-16: a headless
+        `claude -p "x"` reports kind="interactive", identical to a real session,
+        and is distinguished only by never reporting a status. This is the test
+        that actually enforces Justin's ruling."""
+        headless = support.session(kind="interactive")
+        del headless["status"]
+        model = evaluator.evaluate([headless], now=NOW)
+        self.assertEqual([], model["sessions"])
+
+    def test_an_explicit_null_status_also_claims_no_slot(self):
+        model = evaluator.evaluate([support.session(status=None)], now=NOW)
+        self.assertEqual([], model["sessions"])
+
+    def test_a_missing_status_is_dropped_but_an_unknown_one_is_shown(self):
+        """"Hasn't said anything yet" and "doing something I have no name for"
+        are different, and only the second is worth a glyph."""
+        self.assertFalse(evaluator.reportable(support.session(status=None)))
+        self.assertTrue(evaluator.reportable(support.session(status="frobnicating")))
+        model = evaluator.evaluate([support.session(status="frobnicating")], now=NOW)
+        self.assertEqual(1, len(model["sessions"]))
+        self.assertEqual("unknown", model["sessions"][0]["state"])
+
 
 class TestOrderingAndPriority(unittest.TestCase):
     def test_blocked_sessions_sort_above_everything(self):

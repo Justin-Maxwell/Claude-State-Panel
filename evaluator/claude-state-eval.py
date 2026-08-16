@@ -97,12 +97,36 @@ COLOUR = {
 }
 
 
+def reportable(session):
+    """Is there anything to draw for this session yet?
+
+    A session that has not reported a `status` has not told us what it is doing,
+    and a glyph for it would be an assertion we cannot support.
+
+    This is also, empirically, how a headless `claude -p` is excluded --
+    verified 2026-08-16, and *not* the way it was first implemented. `kind` does
+    not do it: a `claude -p "x"` reports `kind: "interactive"`, byte-identical to
+    a session Justin is typing into. The only observed difference is that it
+    never reports a status before exiting.
+
+    So Justin's ruling of 2026-08-14 -- non-interactive sessions never claim a
+    slot -- rests on this check, not on `kind`. Caveat recorded honestly: the
+    evidence is one run of three samples, and a `claude -p` that lived long
+    enough to report a status would take a slot for as long as it ran. Given
+    the real case (the claudelimits widget, finding K) lives under a second and
+    the poll interval is seconds, the exposure is at most a one-frame flicker.
+    """
+    return session.get("status") is not None
+
+
 def classify(session):
     """Map one CLI session entry to (state, warning-or-None).
 
-    Unrecognised input yields "unknown" plus a warning rather than a guess or a
-    crash. A future Claude Code release adding a status is a display bug here,
-    not an outage.
+    An unrecognised status yields "unknown" plus a warning rather than a guess
+    or a crash: a future Claude Code release adding a status is a display bug
+    here, not an outage. That is deliberately different from a *missing* status,
+    which `reportable()` drops -- "doing something I have no name for" is worth
+    showing, "hasn't said anything yet" is not.
     """
     status = session.get("status")
     if status == "busy":
@@ -167,10 +191,12 @@ def evaluate(raw_sessions, now=None, slots=DEFAULT_SLOTS, warnings=None):
 
     for session in raw_sessions:
         # Non-interactive sessions never claim a slot -- Justin's direction,
-        # 2026-08-14. Under the hook architecture this needed a discriminator
-        # nobody could derive (open question 10, findings E/F/H). The CLI simply
-        # reports `kind`, so the requirement is now one comparison.
+        # 2026-08-14. Two filters, and the second is the one doing the work:
+        # `kind` excludes backgrounded sessions, but NOT a headless `claude -p`,
+        # which reports kind="interactive". See reportable().
         if session.get("kind") != "interactive":
+            continue
+        if not reportable(session):
             continue
 
         state, warning = classify(session)
