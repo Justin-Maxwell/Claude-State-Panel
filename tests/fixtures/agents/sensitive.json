@@ -1,0 +1,20 @@
+[
+  {
+    "pid": 9001,
+    "cwd": "/home/justin/Code/Projects/Claude-State-Panel",
+    "kind": "interactive",
+    "startedAt": 1786836300000,
+    "sessionId": "cccc3333-0000-4000-8000-000000000004",
+    "name": "sensitive-01",
+    "status": "busy",
+    "intent": "SENTINEL-PROMPT-TEXT the user's actual question",
+    "output": "SENTINEL-TOOL-OUTPUT the tool's actual output",
+    "seed": {
+      "intent": "SENTINEL-PROMPT-TEXT nested prompt text",
+      "name": "SENTINEL-TOOL-INPUT nested tool input"
+    },
+    "providerEnv": {
+      "ANTHROPIC_API_KEY": "SENTINEL-TOOL-INPUT-not-a-real-key"
+    }
+  }
+]

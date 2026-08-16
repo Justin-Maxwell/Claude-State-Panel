@@ -1,0 +1,161 @@
+#!/usr/bin/env python3
+"""Renderers over the evaluator. Two views, one computation.
+
+    claude-state-panel doctor     human-readable diagnostic
+    claude-state-panel eval       the evaluator's model, as JSON
+
+`doctor` exists so the panel's behaviour can be inspected without a Plasma
+shell, and so a bug report can carry exact output. It renders the model and
+computes nothing of its own -- if `doctor` and the panel ever disagree, one of
+them is not using this model, and that is the bug.
+
+Standard library only. No network. Never reads ~/.claude/.credentials.json.
+"""
+
+import argparse
+import importlib.util
+import json
+import os
+import pathlib
+import sys
+
+REPO_ROOT = pathlib.Path(__file__).resolve().parent.parent
+EVALUATOR = REPO_ROOT / "evaluator" / "claude-state-eval.py"
+
+# ANSI, applied only when stdout is a terminal. Piping `doctor` into a file or
+# a bug report must not smuggle escape codes along with it.
+ANSI = {
+    "attention": "\033[33m",   # yellow -- blocked on you
+    "active": "\033[32m",      # green  -- working, or your turn to type
+    "neutral": "\033[90m",     # grey   -- unclassified
+}
+DIM = "\033[2m"
+BOLD = "\033[1m"
+RESET = "\033[0m"
+
+
+def load_evaluator():
+    """Import the evaluator by path; its filename is not a valid module name."""
+    spec = importlib.util.spec_from_file_location("claude_state_eval", EVALUATOR)
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    return module
+
+
+def human_age(seconds):
+    """Compact age. A panel diagnostic should not make anyone count digits."""
+    if seconds is None:
+        return "?"
+    seconds = int(seconds)
+    if seconds < 60:
+        return f"{seconds}s"
+    if seconds < 3600:
+        return f"{seconds // 60}m"
+    return f"{seconds // 3600}h{(seconds % 3600) // 60:02d}m"
+
+
+def render_doctor(model, colour=True):
+    """Render the model as text. Pure: model in, string out."""
+    def paint(text, key):
+        return f"{ANSI.get(key, '')}{text}{RESET}" if colour and key else text
+
+    def faint(text):
+        return f"{DIM}{text}{RESET}" if colour else text
+
+    out = []
+    head = f"claude-state-panel  {model['generated_at_local']}"
+    out.append(paint(head, None) if not colour else f"{BOLD}{head}{RESET}")
+    out.append(faint(f"source: {model['source']}"))
+    out.append("")
+
+    count = model["session_count"]
+    attention = model["attention_count"]
+    summary = f"{count} session{'' if count == 1 else 's'}"
+    if attention:
+        summary += f", {paint(f'{attention} waiting on you', 'attention')}"
+    else:
+        summary += ", none waiting on you"
+    out.append("  " + summary)
+    out.append("")
+
+    if model["sessions"]:
+        header = (f"   {'slot':<4} {' '} {'state':<18}  {'label':<24} "
+                  f"{'age':>5}  pid")
+        out.append(faint(header))
+        out.append(faint("   " + "-" * (len(header) - 3)))
+        for entry in model["sessions"]:
+            glyph = paint(entry["glyph"], entry["colour"])
+            state = paint(f"{entry['state']:<18}", entry["colour"])
+            out.append(
+                f"   {entry['slot']:<4} {glyph} {state}  {entry['label']:<24} "
+                f"{human_age(entry['age_secs']):>5}  {entry['pid']}"
+            )
+    else:
+        out.append(faint("  no interactive sessions"))
+    out.append("")
+
+    overflow = model["overflow"]
+    if overflow["count"]:
+        badge = paint(f"+{overflow['count']} {overflow['glyph']}", overflow["colour"])
+        out.append(f"  overflow: {badge}  "
+                   + faint(f"(highest hidden state: {overflow['state']})"))
+        for entry in overflow["sessions"]:
+            out.append(faint(f"      {entry['state']:<18} {entry['label']}"))
+    else:
+        out.append(faint("  no overflow"))
+
+    if model["warnings"]:
+        out.append("")
+        out.append(paint(f"  {len(model['warnings'])} warning(s):", "attention"))
+        for warning in model["warnings"]:
+            out.append(f"      {warning}")
+    return "\n".join(out)
+
+
+def build_model(args, evaluator):
+    """Model from a live CLI call, or from a captured JSON file."""
+    if args.json_input:
+        raw = json.loads(pathlib.Path(args.json_input).read_text())
+        warnings = []
+        if not isinstance(raw, list):
+            raw, warnings = [], ["input file is not a JSON array"]
+        return evaluator.evaluate(raw, now=args.now, slots=args.slots,
+                                  warnings=warnings)
+    return evaluator.current(slots=args.slots, now=args.now)
+
+
+def main(argv=None):
+    parser = argparse.ArgumentParser(prog="claude-state-panel",
+                                     description=__doc__.splitlines()[0])
+    parser.add_argument("command", choices=("doctor", "eval"))
+    parser.add_argument("--slots", type=int, default=None,
+                        help="how many sessions get a glyph before overflow")
+    parser.add_argument("--json-input", metavar="FILE",
+                        help="read a captured `claude agents --json` instead of "
+                             "running it; for tests and bug reports")
+    parser.add_argument("--now", type=float, default=None,
+                        help="override the clock, for reproducible output")
+    parser.add_argument("--no-colour", action="store_true")
+    args = parser.parse_args(argv)
+
+    evaluator = load_evaluator()
+    if args.slots is None:
+        args.slots = evaluator.DEFAULT_SLOTS
+
+    model = build_model(args, evaluator)
+
+    if args.command == "eval":
+        json.dump(model, sys.stdout, indent=2, sort_keys=True)
+        sys.stdout.write("\n")
+    else:
+        colour = sys.stdout.isatty() and not args.no_colour \
+            and os.environ.get("NO_COLOR") is None
+        print(render_doctor(model, colour=colour))
+
+    # A warning is not a failure. Exit 1 only when nothing could be read at all,
+    # so a monitoring wrapper can tell "no sessions" from "could not look".
+    return 1 if (model["warnings"] and not model["sessions"]) else 0
+
+
+if __name__ == "__main__":
+    sys.exit(main())

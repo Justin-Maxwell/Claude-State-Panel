@@ -35,30 +35,50 @@ Three processes, one direction of data flow, and exactly one place where truth
 is computed.
 
 ```
-  Claude Code                                          Plasma panel
-  ───────────                                          ────────────
-  hook events ──▶ [1] writer ──▶ state file ──▶ [2] evaluator ──▶ [3a] compact glyphs
-  (9 events)      (fast, dumb)   (tmpfs, JSON)   (all logic)      [3b] popup list
-                                                        │          [3c] doctor CLI
-                                                        └──────────▶ (identical output)
+  Claude Code                              Plasma panel
+  ───────────                              ────────────
+  claude agents --json ──▶ [1] evaluator ──▶ [2a] compact glyphs
+  (first-party CLI)        (all logic)       [2b] popup list
+                                 │           [2c] doctor CLI
+                                 └──────────▶ (identical output)
 ```
 
-1. **Writer** — invoked per hook event, records raw facts, contains no policy.
-2. **Evaluator** — the only component deciding liveness, staleness, and order.
-3. **Renderers** — three views over one evaluator output. None recomputes
+1. **Evaluator** — `evaluator/claude-state-eval.py`. The only place truth is
+   computed: classification, priority, ordering, slots, overflow, labels.
+2. **Renderers** — three views over one evaluator output. None recomputes
    anything, so the panel and `doctor` cannot disagree.
 
-State lives at `$XDG_RUNTIME_DIR/claude-state-panel/state.json` — tmpfs, mode
-`0600`, wiped on reboot by design.
+**There is no writer and no state file.** Both existed to reconstruct session
+state from a stream of hook events, and both are gone: `claude agents --json`
+reports the state directly. What went with them is not just code but three whole
+classes of bug — a crashed session leaving an uncloseable record, an Esc
+interrupt freezing a record mid-transition, and an escaped question claiming
+"needs your answer" forever with no timeout able to fix it. A session that dies,
+is interrupted, or has its question dismissed simply stops being reported that
+way on the next poll. See findings I, 2 & 4, and N.
+
+The hook path remains fully specified in `docs/findings.md` as the fallback if
+the CLI — a research preview — is ever withdrawn.
 
 ## Status
 
-Phase 0 in progress, as of 2026-08-16. No implementation code written yet.
+Phase 1 complete as of 2026-08-16. `just doctor` renders live sessions today.
+
+```
+   slot   state               label                      age  pid
+   --------------------------------------------------------------
+   0    ! waiting-permission  Clautana (tana)             8m  42984
+   1    ? waiting-answer      Glyph-Hunter             1h19m  6173
+   2    ○ idle                Sentry-MCP                  5m  48616
+   3    ○ idle                Clautana (Foreign)          5m  50001
+
+  overflow: +2 ●  (highest hidden state: working)
+```
 
 | Phase | Deliverable | State |
 |---|---|---|
 | 0 | `probe/` harness; resolve every `⟨verify⟩` item touching hooks | **Complete for Phase 1 purposes** — probe live, 13 findings, every blocker resolved |
-| 1 | writer + evaluator + `doctor`, fully testable headless | **Unblocked — but its premise is now in question, see below** |
+| 1 | evaluator + `doctor`, fully testable headless | **Done** — 63 tests, all live, green under three timezones |
 | 2 | plasmoid compact + popup; click copies `cwd` | Not started |
 | 3 | Konsole tab focus via D-Bus | Not started |
 | 4 | `error` / `rate_limit` rendering | Not started |

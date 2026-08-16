@@ -1,0 +1,15 @@
+claude-state-panel  2026-08-15 23:26:40 UTC
+source: claude agents --json
+
+  6 sessions, 2 waiting on you
+
+   slot   state               label                      age  pid
+   --------------------------------------------------------------
+   0    ! waiting-permission  Clautana (tana)             8m  42984
+   1    ? waiting-answer      Glyph-Hunter             1h19m  6173
+   2    ○ idle                Sentry-MCP                  5m  48616
+   3    ○ idle                Clautana (Foreign)          5m  50001
+
+  overflow: +2 ●  (highest hidden state: working)
+      working            Claude-State-Panel
+      working            Overflowed

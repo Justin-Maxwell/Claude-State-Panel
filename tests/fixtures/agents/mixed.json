@@ -1,0 +1,69 @@
+[
+  {
+    "pid": 6173,
+    "cwd": "/home/justin/Code/Projects/Glyph-Hunter",
+    "kind": "interactive",
+    "startedAt": 1786831640481,
+    "sessionId": "e8356ad6-3354-45e0-975b-8eade7262f2b",
+    "name": "glyph-hunter-07",
+    "status": "waiting",
+    "waitingFor": "input needed"
+  },
+  {
+    "pid": 14751,
+    "cwd": "/home/justin/Code/Projects/Claude-State-Panel",
+    "kind": "interactive",
+    "startedAt": 1786833291511,
+    "sessionId": "69e86564-c78e-4e3f-9bcb-9ca215c09aa0",
+    "name": "claude-state-panel-97",
+    "status": "busy"
+  },
+  {
+    "pid": 42984,
+    "cwd": "/home/justin/Code/tana/Clautana",
+    "kind": "interactive",
+    "startedAt": 1786835903614,
+    "sessionId": "d4b1160f-4f38-4402-9e28-7c4ec39b8322",
+    "name": "clautana-79",
+    "status": "waiting",
+    "waitingFor": "permission prompt"
+  },
+  {
+    "pid": 48616,
+    "cwd": "/home/justin/Code/Projects/Sentry-MCP",
+    "kind": "interactive",
+    "startedAt": 1786836043147,
+    "sessionId": "e729e0cc-961c-4aed-b246-a37676d07e5a",
+    "name": "sentry-mcp-c9",
+    "status": "idle"
+  },
+  {
+    "pid": 50001,
+    "cwd": "/home/justin/Code/Foreign/Clautana",
+    "kind": "interactive",
+    "startedAt": 1786836100000,
+    "sessionId": "aaaa1111-0000-4000-8000-000000000001",
+    "name": "clautana-ff",
+    "status": "idle"
+  },
+  {
+    "pid": 50002,
+    "cwd": "/home/justin/Code/Projects/Overflowed",
+    "kind": "interactive",
+    "startedAt": 1786836200000,
+    "sessionId": "bbbb2222-0000-4000-8000-000000000002",
+    "name": "overflowed-11",
+    "status": "busy"
+  },
+  {
+    "pid": 4214,
+    "cwd": "/home/justin",
+    "kind": "background",
+    "startedAt": 1786831538683,
+    "sessionId": "7d0ccdb5-0000-4000-8000-000000000003",
+    "name": "claudelimits-probe",
+    "status": "busy",
+    "intent": "SENTINEL-PROMPT-TEXT x",
+    "output": "SENTINEL-TOOL-OUTPUT never persist this"
+  }
+]
