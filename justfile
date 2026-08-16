@@ -1,4 +1,5 @@
 plasmoid_id := "nz.jaymax.claudestatepanel"
+identicon := "identicon/claude-state-identicon.py"
 
 # List available recipes
 default:
@@ -22,6 +23,33 @@ doctor:
 # Raw evaluator output as JSON (Phase 1 onward)
 eval:
     bin/claude-state-panel eval
+
+# --- Konsole project identicons -------------------------------------------
+# Manual for now: nothing is wired to a hook. See docs/konsole-identicons.md.
+
+# Derived names and a terminal preview for the current project
+identicon-show:
+    {{identicon}} show
+
+# Install the current project's identicon into the user icon theme
+identicon-install:
+    {{identicon}} install
+
+# Report which session D-Bus methods this Konsole build actually exposes
+identicon-probe:
+    {{identicon}} probe
+
+# Probe, then exercise both the badge and profile routes on this tab
+identicon-demo:
+    {{identicon}} demo
+
+# Remove the current project's identicon and generated profile
+identicon-uninstall:
+    {{identicon}} uninstall
+
+# Environment report for the identicon tool
+identicon-doctor:
+    {{identicon}} doctor
 
 # Install the plasmoid
 install-plasmoid:

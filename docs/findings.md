@@ -33,11 +33,75 @@ One resolved. Eight outstanding from spec §13, plus one new item.
 | 7 | Can a non-focused process raise a Konsole window under KWin on Wayland? | 3 |
 | 8 | Does Konsole honour an OSC title sequence given the tab-title format? | 3 |
 | 9 | Reliable way to derive a session's `tty` from `/proc` | 0 |
+| 11 | Is `setBadgeColor` present in Konsole's D-Bus introspection, given `QColor` has no registered metatype? | — |
+| 12 | Does `ProfileManager` pick up a `.profile` written after Konsole started, or is a restart required? | — |
+| 13 | Does `QIcon::fromTheme` find a newly installed hicolor icon without a cache rebuild? | — |
 
 Items 1, 2, 4, 9 and 10 block Phase 1. Phase 2 must not begin with any Phase 0
-item unresolved.
+item unresolved. Items 11 to 13 belong to the Konsole identicon work, which is
+adjacent to the panel rather than a phase of it — see
+`docs/konsole-identicons.md`. They block nothing, and each is answered by
+`identicon/claude-state-identicon.py probe`.
 
 ## Resolved
+
+## E. Konsole ships no out-of-tree plugin SDK
+
+- **Assumed:** not in this spec. Carried in from a prior session's research,
+  which established that a C++ `IKonsolePlugin` could set a per-tab icon on the
+  `open-browser` action in the session toolbar, and treated that as buildable.
+- **Observed:** false as an out-of-tree proposition. `src/CMakeLists.txt`
+  installs both libraries with the link symlink suppressed —
+  `install(TARGETS konsoleprivate ... LIBRARY NAMELINK_SKIP)`, likewise
+  `konsoleapp` — and installs no headers at all. `IKonsolePlugin.h`,
+  `SessionController.h` and `MainWindow.h` therefore exist only inside the
+  source tree. Building the plugin means building against a Konsole checkout,
+  and rebuilding every KDE Gear release regardless, because discovery gates the
+  plugin's `major.minor` against `RELEASE_SERVICE_VERSION`.
+- **Test:** read `src/CMakeLists.txt`, `src/pluginsystem/IKonsolePlugin.h` and
+  `desktop/sessionui.rc` at `KDE/konsole@master`.
+- **Date:** 2026-08-17
+- **Consequence:** the toolbar route is abandoned. The rest of that session's
+  reasoning was confirmed correct — `sessionui.rc` is at `version="36"`,
+  `sessionToolbar` omits `open-browser`, and `open-browser` is a plain
+  `QAction` — so the finding is a packaging blocker, not a design error.
+
+## F. The tab icon is not directly scriptable, but the badge is
+
+- **Assumed:** not in the spec. The identicon work needed some per-tab visual
+  surface reachable without compiling anything.
+- **Observed:** in `src/session/Session.h`, `setIconName` carries no
+  `Q_SCRIPTABLE`, so the session icon cannot be set over D-Bus. `setProfile`
+  does, and `Session::setProfile` matches by name against
+  `ProfileManager::allProfiles()`, silently no-opping on a miss. Separately the
+  entire badge family — `setBadgeEnabled`, `setBadgeText`, `setBadgeColor`,
+  `setBadgeTextOnly`, `setBadgeTransparency`, `setBadgeFontFamily`,
+  `setBadgeFontSize` — is `Q_SCRIPTABLE`.
+- **Test:** read `src/session/Session.h`, `src/session/Session.cpp` and
+  `src/profile/Profile.cpp` at `KDE/konsole@master`.
+- **Date:** 2026-08-17
+- **Consequence:** two working routes, both implemented. The profile route needs
+  the icon installed into the user icon theme first, because `Profile.cpp` keys
+  `Icon` under `GENERAL_GROUP` as a theme name, not a path. Open item 11 hangs
+  off `setBadgeColor`, whose `QColor` argument has no D-Bus metatype registered
+  anywhere in Konsole.
+
+## G. Konsole exports its own D-Bus address into every session
+
+- **Assumed:** open item 6 treats Konsole D-Bus object paths as something to be
+  discovered, presumably by matching a PID.
+- **Observed:** `Session.cpp` adds `KONSOLE_DBUS_SERVICE` and
+  `KONSOLE_DBUS_SESSION=/Sessions/<id>` to each session's environment, and
+  registers the object at that same path. A process running inside a tab can
+  therefore address its own tab with no search and no PID matching.
+- **Test:** read `Session::run` and the `registerObject` call at
+  `KDE/konsole@master`.
+- **Date:** 2026-08-17
+- **Consequence:** the identicon tool needs no `--session` argument in the
+  common case. Item 6 is not resolved by this — Phase 3 tab focus needs the
+  reverse mapping, from a `claude` PID to a tab, for a session the panel did not
+  launch — but it narrows it: the mapping is only needed for sessions whose
+  environment cannot be read.
 
 ## 3. In exec form, is `os.getppid()` the `claude` process?
 

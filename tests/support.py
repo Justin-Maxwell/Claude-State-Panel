@@ -1,5 +1,6 @@
 """Shared helpers for the test suite. Standard library only."""
 
+import importlib.util
 import json
 import pathlib
 
@@ -8,6 +9,19 @@ FIXTURE_DIR = REPO_ROOT / "tests" / "fixtures"
 
 WRITER = REPO_ROOT / "writer" / "claude-state-writer.py"
 EVALUATOR = REPO_ROOT / "evaluator" / "claude-state-eval.py"
+IDENTICON = REPO_ROOT / "identicon" / "claude-state-identicon.py"
+
+
+def load_script(path, name):
+    """Import a hyphenated, extensionless-by-convention script as a module.
+
+    The tools are named for the command line, not for `import`, so the suite
+    loads them by path rather than renaming them to suit the tests.
+    """
+    spec = importlib.util.spec_from_file_location(name, path)
+    module = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(module)
+    return module
 
 # Strings planted in the fixtures purely so tests can assert they never reach
 # the state file. See spec 4.2: never persist prompt or tool input.

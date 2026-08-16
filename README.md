@@ -91,6 +91,34 @@ Three open questions need scenarios only a human can trigger — an
 `AskUserQuestion` answered, an Esc interrupt left for 90s, and a non-interactive
 session. They are listed with their tests in `docs/findings.md`.
 
+## Konsole project identicons
+
+Adjacent to the panel, not a phase of it. The panel answers *is anything waiting
+on me*; this answers *which project is this tab*. A GitHub-style identicon is
+derived from the tab's working directory and applied over Konsole's session
+D-Bus interface, by two routes that need no compilation:
+
+- **badge** — a coloured one or two character label over the terminal view.
+- **profile** — a generated profile carrying an `Icon=`, giving a real tab-bar
+  icon.
+
+The route originally scoped, an identicon on the session toolbar, is blocked:
+Konsole installs no plugin headers, so a `IKonsolePlugin` cannot be built out of
+tree at all. Finding E in `docs/findings.md`.
+
+Manual for now — nothing is wired to a hook.
+
+```
+just identicon-show        # derived names and a terminal preview
+just identicon-install     # into the user icon theme
+just identicon-probe       # which D-Bus methods this Konsole exposes
+just identicon-demo        # probe, then exercise both routes on this tab
+just identicon-uninstall
+```
+
+Full write-up, with the upstream evidence for every claim, in
+`docs/konsole-identicons.md`.
+
 ## Naming
 
 The project was renamed from `claude-session-panel` to `claude-state-panel`
