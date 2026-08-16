@@ -106,6 +106,47 @@ class TestConfigSchema(unittest.TestCase):
                          f"QML reads undeclared config keys: {used - declared}")
 
 
+class TestPanelDocking(unittest.TestCase):
+    """A panel fixes the applet's cross axis and asks for the main axis.
+
+    Constraining only minimums, or leaving an axis at zero, produces an applet
+    that collapses to nothing in a panel -- which is indistinguishable, from the
+    user's side, from a widget that cannot be added at all. It throws no error,
+    so nothing else catches it. These tests exist because it happened.
+    """
+
+    def setUp(self):
+        qml = MAIN_QML.read_text()
+        start = qml.index("compactRepresentation:")
+        self.compact = qml[start:qml.index("fullRepresentation:", start)]
+
+    def test_both_axes_are_constrained_in_all_three_ways(self):
+        for prop in ("minimumWidth", "maximumWidth", "preferredWidth",
+                     "minimumHeight", "maximumHeight", "preferredHeight"):
+            with self.subTest(prop=prop):
+                self.assertIn(f"Layout.{prop}", self.compact,
+                              f"compact representation never sets Layout.{prop}")
+
+    def test_it_branches_on_form_factor(self):
+        """Horizontal and vertical panels need opposite axes pinned."""
+        self.assertIn("PlasmaCore.Types.Vertical", self.compact)
+        for prop in ("Layout.minimumWidth", "Layout.maximumWidth",
+                     "Layout.minimumHeight", "Layout.maximumHeight"):
+            with self.subTest(prop=prop):
+                line = next(l for l in self.compact.splitlines()
+                            if l.strip().startswith(prop))
+                self.assertIn("vertical", line,
+                              f"{prop} does not depend on the form factor")
+
+    def test_no_axis_is_pinned_to_zero(self):
+        """The original bug: `vertical ? 0 : ...` on the cross axis."""
+        for line in self.compact.splitlines():
+            if line.strip().startswith("Layout."):
+                with self.subTest(line=line.strip()):
+                    self.assertNotRegex(line, r"[?:]\s*0\s*$",
+                                        "a Layout constraint resolves to zero")
+
+
 class TestRendererReadsOnlyEvaluatorFields(unittest.TestCase):
     """The renderer must not invent fields. See this module's docstring."""
 

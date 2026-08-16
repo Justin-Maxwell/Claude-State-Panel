@@ -156,8 +156,33 @@ PlasmoidItem {
         readonly property bool vertical: Plasmoid.formFactor === PlasmaCore.Types.Vertical
         readonly property int glyphSize: Math.round(Kirigami.Units.gridUnit * 0.9)
 
-        Layout.minimumWidth: vertical ? 0 : glyphRow.implicitWidth + Kirigami.Units.smallSpacing * 2
-        Layout.minimumHeight: vertical ? glyphRow.implicitHeight + Kirigami.Units.smallSpacing * 2 : 0
+        /*
+         * Docking in a panel, horizontal or vertical.
+         *
+         * A panel fixes the applet's *cross* axis -- that is the panel's own
+         * thickness, and the applet does not get a say -- and asks the applet
+         * how much it wants along the *main* axis. So the main axis is pinned
+         * with minimum == maximum == the content size, and the cross axis is
+         * left free between a small floor and infinity.
+         *
+         * Getting this wrong does not produce an error. It produces an applet
+         * that collapses to zero along one axis, which looks exactly like a
+         * widget that refused to be added to the panel at all. The first
+         * version of this file set only minimums, and zero on the cross axis.
+         */
+        readonly property int contentWidth: glyphRow.implicitWidth
+                                            + Kirigami.Units.smallSpacing * 2
+        readonly property int contentHeight: glyphRow.implicitHeight
+                                             + Kirigami.Units.smallSpacing * 2
+        readonly property int floorSize: Kirigami.Units.iconSizes.small
+
+        Layout.minimumWidth: vertical ? floorSize : contentWidth
+        Layout.maximumWidth: vertical ? Number.POSITIVE_INFINITY : contentWidth
+        Layout.preferredWidth: contentWidth
+
+        Layout.minimumHeight: vertical ? contentHeight : floorSize
+        Layout.maximumHeight: vertical ? contentHeight : Number.POSITIVE_INFINITY
+        Layout.preferredHeight: contentHeight
 
         acceptedButtons: Qt.LeftButton
         onClicked: root.expanded = !root.expanded
