@@ -106,11 +106,22 @@ Phase 2 must not begin with any Phase 0 item unresolved.
   makes the widget depend on a Claude Code feature rather than on documented
   hooks.
 
-  **Unverified, and it decides how complete the replacement is:** only
-  `waitingFor: "permission prompt"` has been observed. Whether an
-  `AskUserQuestion` yields a distinct value (the docs suggest `input needed`)
-  is untested, and §6 wants `waiting-answer` and `waiting-permission` rendered
-  differently. A second sampling run is in flight against exactly that.
+  **Now verified — the two waiting states are distinguishable.** A second run,
+  209 samples, caught an `AskUserQuestion`:
+
+  ```
+  13:19:22  status='busy'     waitingFor=None
+  13:21:22  status='waiting'  waitingFor='input needed'
+  13:29:28  status='busy'     waitingFor=None      <- cleared on answer
+  ```
+
+  So `waitingFor` takes `"input needed"` for a question and
+  `"permission prompt"` for a permission decision — exactly the split §6 needs
+  between `waiting-answer` and `waiting-permission`. **And it clears.** The
+  escaped-question hole, recorded above as the widget's weakest claim and
+  unfixable by any timeout, simply does not arise: the CLI reports the session's
+  actual state, so dismissing a question returns it to `busy`/`idle` within one
+  poll. Every §6 state is reachable from this source.
 
 ## O. Prior art: one Plasma widget does share this purpose, and it is three weeks old
 
