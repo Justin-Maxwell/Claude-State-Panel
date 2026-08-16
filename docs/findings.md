@@ -92,10 +92,65 @@ Phase 2 must not begin with any Phase 0 item unresolved.
   Better still, **`setTabColor()`** means the tab can carry the same colour the
   panel glyph does. That is a more direct answer to "which tab wants me" than a
   title ever was, and it needs no window raising at all.
+- **Tab colour is readable as well as writable, with one trap.** `tabColor()`
+  returns the current colour, so the widget can take a tab's colour as an input
+  rather than only imposing one. Justin already colours tabs by hand — tab 2 was
+  `#ffff80` while the rest were `#000000`.
+
+  **`#000000` is the unset sentinel, not a colour.** Konsole reports black for
+  every tab that has never been coloured, so "no colour" and "deliberately
+  black" are indistinguishable. Anything reading tab colours must treat
+  `#000000` as absent.
+
+- **Tab icons are not exposed.** The `Session` interface has no icon method of
+  any kind. Per-project identicons as tab "favicons" cannot be done through
+  D-Bus, whatever one thinks of the idea.
+
+- **A fork this creates, to be settled before Phase 3 writes anything.** Tab
+  colour has one owner. Either the widget *writes* it to show state, or Justin
+  *keeps* it for project identity and the widget *reads* it — it cannot be both,
+  because writing state colours would destroy the `#ffff80` he set by hand.
+
+  Reading is the less invasive half and matches his stated preference for
+  project colours: the panel dot could take its fill from the tab's colour,
+  giving a direct visual link between a dot and a tab, with state carried by
+  some other channel such as a ring around it. Nothing is written to his
+  terminal at all under that arrangement.
+
 - **Date:** 2026-08-16
 - **Consequence:** open question 6 resolved, open question 8 withdrawn as
   superseded. Phase 3 gets a concrete shape: match by `foregroundProcessId()`,
   fall back to a parent walk, then `setCurrentSession()` to select the tab.
+
+## P. Prior art for terminal tab status exists, but none of it targets Konsole
+
+- **Observed:** several published tools drive terminal tabs from Claude Code
+  hooks, and all of the colour-capable ones target iTerm2:
+  [claude-code-iterm2-tab-status](https://github.com/JasperSui/claude-code-iterm2-tab-status),
+  TabChroma (tab colour, badge and title by state),
+  [claude-code-tab-title](https://github.com/franzvill/claude-code-tab-title)
+  (generic, hooks `UserPromptSubmit`/`Stop`/`SessionStart`),
+  [which-claude-code](https://github.com/jbarbier/which-claude-code)
+  (auto-generated session titles and per-session colours in the statusline), and
+  claude-tab-namer.
+
+  Two upstream requests are open and relevant:
+  [#58588](https://github.com/anthropics/claude-code/issues/58588) asks for
+  `/rename` and `/color` to be settable programmatically at session start, and
+  [#52258](https://github.com/anthropics/claude-code/issues/52258) asks for
+  customisable terminal titles.
+- **Date:** 2026-08-16
+- **Consequence:** **nothing found targets Konsole.** The niche this project
+  would occupy on the tab-colouring side is empty, and unlike finding O — where
+  AgentDiode already occupies the panel-indicator niche — there is no incumbent
+  here at all. The iTerm2 tools are worth reading for state-to-colour mappings,
+  not for mechanism, since iTerm2 uses escape sequences where Konsole uses
+  D-Bus.
+
+  Note that `/color` and `/rename` already exist inside Claude Code as
+  per-session concepts. If #58588 lands, a session's own colour becomes readable
+  identity that both the tab and the panel could follow, which would settle the
+  fork above from a direction neither side currently controls.
 
 ## 7. Raising the window is the hard part, and Konsole cannot do it
 
