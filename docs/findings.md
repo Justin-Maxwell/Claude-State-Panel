@@ -28,9 +28,7 @@ outstanding, none of which block Phase 1.
 
 | # | Question | Phase | State |
 |---|---|---|---|
-| 6 | Konsole D-Bus object paths, interfaces, and the PID field matching a tab | 3 | not started |
-| 7 | Can a non-focused process raise a Konsole window under KWin on Wayland? | 3 | not started |
-| 8 | Does Konsole honour an OSC title sequence given the tab-title format? | 3 | not started |
+| 7 | Can a non-focused process raise a Konsole window under KWin on Wayland? | 3 | **scoped** — Konsole cannot; two untested routes, finding 7 |
 
 Two hook events remain unobserved — `Elicitation` and `StopFailure` — but
 neither was ever a blocker. `StopFailure` gates Phase 4 rendering only, and
@@ -39,6 +37,98 @@ finding C already established how `error_kind` must reach it.
 Phase 2 must not begin with any Phase 0 item unresolved.
 
 ## Resolved
+
+## 6 & 8. Konsole's D-Bus API does tabs properly, including colouring them
+
+- **Assumed:** open question 6 asked for "Konsole D-Bus object paths,
+  interfaces, and the PID field matching a tab"; open question 8 asked whether
+  Konsole honours an OSC title sequence given the tab-title format. Both were
+  listed as Phase 3 and unstarted.
+- **Observed:** the API is richer than the questions assumed, and OSC turns out
+  to be the wrong mechanism entirely.
+
+  Service is `org.kde.konsole-<pid>` on the **session** bus — one per Konsole
+  process, so a multi-window setup means several services.
+
+  ```
+  /Windows/1   org.kde.konsole.Window
+      sessionList() -> ["1".."7"]      currentSession() -> int
+      setCurrentSession(int)           <- activates a tab
+      nextSession() / prevSession()    moveSessionLeft() / Right()
+
+  /Sessions/N  org.kde.konsole.Session
+      foregroundProcessId() -> int     processId() -> int  (the tab's shell)
+      setTitle(int role, QString)      setTabTitleFormat(int ctx, QString)
+      setTabColor(QString)             <- colours the tab itself
+      setMonitorActivity/Silence/Prompt(bool)
+  ```
+
+- **Test:** live introspection plus a matching run against
+  `claude agents --json`, 2026-08-16, seven tabs and four Claude sessions.
+  **`foregroundProcessId()` equals the `pid` the CLI reports, exactly**, for
+  every session that is the foreground process of its tab:
+
+  ```
+  tab 1  foreground 6173   <- claude pid 6173   Glyph-Hunter
+  tab 2  foreground 14751  <- claude pid 14751  Claude-State-Panel
+  tab 4  foreground 48616  <- claude pid 48616  Sentry-MCP
+  tab 4  (no match)        <- claude pid 151101 Sentry-MCP, nested
+  ```
+
+- **Two things fall out that the question did not anticipate.**
+
+  **1. The mapping is many-to-one.** Two Claude sessions were live in tab 4 —
+  one nested inside the other — and only one can be the foreground process. So
+  `foregroundProcessId()` is the primary match and a `/proc` parent walk up to
+  the tab's `processId()` is the fallback that catches the rest. Both were
+  observed working. A UI that assumes one session per tab is wrong.
+
+  **2. Open question 8 is moot.** `setTitle()` and `setTabTitleFormat()` set the
+  tab caption over D-Bus, so nothing needs to be smuggled through an OSC escape
+  sequence — which matters, because issue #43058 reports that Claude Code
+  overwrites terminal title sequences after the `Stop` hook fires. An
+  out-of-band call cannot be clobbered by the program running in the tab.
+
+  Better still, **`setTabColor()`** means the tab can carry the same colour the
+  panel glyph does. That is a more direct answer to "which tab wants me" than a
+  title ever was, and it needs no window raising at all.
+- **Date:** 2026-08-16
+- **Consequence:** open question 6 resolved, open question 8 withdrawn as
+  superseded. Phase 3 gets a concrete shape: match by `foregroundProcessId()`,
+  fall back to a parent walk, then `setCurrentSession()` to select the tab.
+
+## 7. Raising the window is the hard part, and Konsole cannot do it
+
+- **Assumed:** open question 7 — "can a non-focused process raise a Konsole
+  window under KWin on Wayland?"
+- **Observed:** **Konsole exposes no activate, raise, present or focus method.**
+  `/konsole/MainWindow_1` carries only `KXmlGuiWindow`/`KMainWindow` plumbing —
+  captions, toolbars, full-screen. `setCurrentSession()` switches the tab
+  *inside* a window; nothing brings the window forward. So the question stands
+  as asked, and the answer from Konsole alone is no.
+- **Two candidate routes, neither yet tested.**
+
+  1. **From inside the plasmoid, which is the privileged position.** The
+     `org.kde.taskmanager` QML module is installed
+     (`/usr/lib64/qt6/qml/org/kde/taskmanager`). This is how the Task Manager
+     widget raises windows on Wayland every day: a plasmoid responding to a
+     *click* holds a valid xdg-activation token, so it is not focus-stealing and
+     the compositor honours it. A panel widget is therefore in a far better
+     position here than the `doctor` CLI would be.
+  2. **`kdotool`**, already installed (v0.2.3). Injects KWin scripts over D-Bus
+     and offers `windowactivate`, `windowraise`, `search --pid`, and
+     `windowstate --add DEMANDS_ATTENTION` — the last of which flags the taskbar
+     entry as urgent rather than stealing focus, and may be the better
+     behaviour.
+- **Date:** 2026-08-16
+- **Consequence:** stays open, but is no longer unscoped. Phase 3 should try
+  route 1 first, because it is the sanctioned mechanism and costs no extra
+  dependency; `kdotool` is the fallback and the only route available to
+  something that is not a plasmoid.
+
+  Note the ordering constraint either way: raise the window **then**
+  `setCurrentSession()`, or the tab switch may land on a window the user cannot
+  see.
 
 ## 5. The Plasma 6 executable data engine: `plasma5support`, not `PlasmaCore`
 
