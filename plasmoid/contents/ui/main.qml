@@ -41,6 +41,10 @@ PlasmoidItem {
     readonly property int pollMs: Plasmoid.configuration.pollInterval
     readonly property int slotCount: Plasmoid.configuration.slotCount
 
+    // "state": the dot is the state, one thing to read.
+    // "project": the dot is the project, state becomes a ring around it.
+    readonly property bool fillIsProject: Plasmoid.configuration.dotFill === "project"
+
     // ---- state, straight from the evaluator ----
     property var model: null
     property string errorMsg: ""
@@ -237,8 +241,17 @@ PlasmoidItem {
                     Layout.preferredWidth: compact.dotSize
                     Layout.preferredHeight: compact.dotSize
                     radius: width / 2
-                    color: root.colourFor(modelData.colour)
                     antialiasing: true
+
+                    // In project mode the fill identifies *which* session and
+                    // the ring says what it wants; the ring is drawn thick so
+                    // that "wants something" still wins the glance, since that
+                    // is the question the widget exists to answer.
+                    color: root.fillIsProject ? modelData.project_colour
+                                              : root.colourFor(modelData.colour)
+                    border.width: root.fillIsProject
+                        ? Math.max(2, Math.round(compact.dotSize * 0.18)) : 0
+                    border.color: root.colourFor(modelData.colour)
                 }
             }
 
@@ -323,6 +336,7 @@ PlasmoidItem {
                 clip: true
 
                 delegate: PlasmaComponents.ItemDelegate {
+                    id: sessionRow
                     required property var modelData
                     width: sessionList.width
                     hoverEnabled: true
@@ -347,8 +361,57 @@ PlasmoidItem {
                             Layout.alignment: Qt.AlignVCenter
                             radius: width / 2
                             antialiasing: true
-                            color: root.colourFor(modelData.colour)
-                            opacity: modelData.slot === null ? 0.55 : 1.0
+                            color: root.fillIsProject
+                                ? sessionRow.modelData.project_colour
+                                : root.colourFor(sessionRow.modelData.colour)
+                            border.width: root.fillIsProject ? 3 : 0
+                            border.color: root.colourFor(sessionRow.modelData.colour)
+                            opacity: sessionRow.modelData.slot === null ? 0.55 : 1.0
+                        }
+
+                        /*
+                         * The identicon, derived from the project path and so
+                         * needing no configuration from anyone.
+                         *
+                         * Drawn here and deliberately not in the panel: at
+                         * panel size a 5x5 grid is mush, whereas the popup has
+                         * room for it to be recognisable. Shape is a second,
+                         * redundant channel for identity -- useful to anyone
+                         * who cannot rely on the colour.
+                         */
+                        Column {
+                            id: identicon
+                            readonly property int cell:
+                                Math.max(2, Math.round(Kirigami.Units.gridUnit / 5))
+                            Layout.alignment: Qt.AlignVCenter
+                            Layout.preferredWidth: cell * 5
+                            spacing: 0
+                            opacity: sessionRow.modelData.slot === null ? 0.55 : 1.0
+
+                            Repeater {
+                                model: sessionRow.modelData.identicon
+                                delegate: Row {
+                                    id: identiconRow
+                                    required property string modelData
+                                    spacing: 0
+                                    Repeater {
+                                        model: 5
+                                        delegate: Rectangle {
+                                            required property int index
+                                            width: identicon.cell
+                                            height: identicon.cell
+                                            // Indexed, not .charAt(): a test
+                                            // scans for `modelData.<field>` to
+                                            // prove the renderer reads only
+                                            // fields the evaluator emits, and a
+                                            // method call would read as a field.
+                                            color: identiconRow.modelData[index] === "1"
+                                                ? sessionRow.modelData.project_colour
+                                                : "transparent"
+                                        }
+                                    }
+                                }
+                            }
                         }
 
                         ColumnLayout {

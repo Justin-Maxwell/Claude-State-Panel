@@ -13,8 +13,30 @@ KCM.SimpleKCM {
     property alias cfg_command: commandField.text
     property alias cfg_pollInterval: pollField.value
     property alias cfg_slotCount: slotField.value
+    property string cfg_dotFill: "state"
 
     Kirigami.FormLayout {
+
+        QQC2.ComboBox {
+            id: dotFillBox
+            Kirigami.FormData.label: "Dot colour shows:"
+            textRole: "text"
+            valueRole: "value"
+            model: [
+                { value: "state",   text: "Session state" },
+                { value: "project", text: "Project identity, state as a ring" }
+            ]
+            Component.onCompleted: currentIndex = indexOfValue(cfg_dotFill)
+            onActivated: cfg_dotFill = currentValue
+        }
+        QQC2.Label {
+            text: "Project colours are derived from the path, never configured,\n"
+                  + "so nothing needs setting up either way."
+            font: Kirigami.Theme.smallFont
+            opacity: 0.7
+        }
+
+        Item { Kirigami.FormData.isSection: true }
 
         QQC2.TextField {
             id: commandField

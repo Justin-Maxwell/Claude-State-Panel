@@ -31,6 +31,23 @@
       <max>120000</max>
     </entry>
 
+    <!--
+      What the dot's fill means.
+
+        state    fill is the session's state. One thing to read, no setup.
+        project  fill is the project's own derived colour, and the state moves
+                 to a ring around it. Two things to read, but a dot then always
+                 means the same project, which is what makes the panel and the
+                 terminal tabs feel like one system.
+
+      Project colour is derived from the path by hashing, never configured, so
+      choosing "project" imposes no setup on anyone.
+    -->
+    <entry name="dotFill" type="String">
+      <label>What the dot's fill colour represents</label>
+      <default>state</default>
+    </entry>
+
     <!-- How many sessions get their own glyph before the rest collapse into
          the overflow badge. Passed through to the evaluator, which owns the
          actual slot allocation. -->

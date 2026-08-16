@@ -24,6 +24,8 @@ ceiling, and no liveness check in this file, and their absence is the point.
 Standard library only. No network. Never reads ~/.claude/.credentials.json.
 """
 
+import colorsys
+import hashlib
 import json
 import os
 import subprocess
@@ -162,6 +164,44 @@ def label_for(session):
     return os.path.basename(cwd.rstrip("/")) or cwd or "?"
 
 
+# Identity is *derived*, never configured. Justin's constraint, 2026-08-16: "I
+# wouldn't want to force users to assign project colours." Hashing the path
+# gives every project a stable, distinct identity for nothing -- no setup, no
+# config file, and the same project looks the same on any machine.
+#
+# Saturation and lightness are fixed so that only hue varies. That keeps every
+# project colour equally readable against a panel, and stops the hash from
+# occasionally producing something black, white, or invisible.
+IDENTICON_SIZE = 5
+_IDENTITY_SATURATION = 0.52
+_IDENTITY_LIGHTNESS = 0.55
+
+
+def project_identity(cwd):
+    """Stable (colour, identicon) for a project path.
+
+    The identicon is a 5x5 grid, mirrored left-to-right the way GitHub's are,
+    returned as five strings of "0"/"1". Emitting the *pattern* rather than an
+    image keeps the rendering decision with the renderers -- the panel draws it
+    at a size where it would be mush, so it does not; the popup has room.
+    """
+    digest = hashlib.sha256((cwd or "").encode("utf-8")).digest()
+
+    hue = digest[0] / 256.0
+    red, green, blue = colorsys.hls_to_rgb(hue, _IDENTITY_LIGHTNESS,
+                                           _IDENTITY_SATURATION)
+    colour = "#%02x%02x%02x" % (round(red * 255), round(green * 255),
+                                round(blue * 255))
+
+    # 15 cells: three columns per row, mirrored to five.
+    bits = int.from_bytes(digest[1:4], "big")
+    grid = []
+    for row in range(IDENTICON_SIZE):
+        left = [(bits >> (row * 3 + column)) & 1 for column in range(3)]
+        grid.append("".join(str(cell) for cell in left + left[1::-1]))
+    return colour, grid
+
+
 def _disambiguate(entries):
     """Give colliding labels a discriminator, and only colliding ones.
 
@@ -214,6 +254,7 @@ def evaluate(raw_sessions, now=None, slots=DEFAULT_SLOTS, warnings=None):
         started_ms = session.get("startedAt")
         started = started_ms / 1000.0 if isinstance(started_ms, (int, float)) else None
         session_id = session.get("sessionId") or ""
+        project_colour, identicon = project_identity(session.get("cwd"))
 
         entries.append({
             "session_id": session_id,
@@ -222,6 +263,11 @@ def evaluate(raw_sessions, now=None, slots=DEFAULT_SLOTS, warnings=None):
             "cwd": session.get("cwd"),
             "label": label_for(session),
             "name": session.get("name"),
+            # Project identity, derived from the path. Independent of state --
+            # a project keeps its colour whatever the session is doing, which
+            # is what makes it identity rather than status.
+            "project_colour": project_colour,
+            "identicon": identicon,
             "state": state,
             "glyph": GLYPH.get(state, GLYPH["unknown"]),
             "colour": COLOUR.get(state, "neutral"),

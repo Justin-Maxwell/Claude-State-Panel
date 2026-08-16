@@ -204,6 +204,79 @@ class TestLabels(unittest.TestCase):
         self.assertIn("Sentry-MCP", labels)
 
 
+class TestProjectIdentity(unittest.TestCase):
+    """Identity is derived, never configured -- Justin's constraint, 2026-08-16:
+    "I wouldn't want to force users to assign project colours." Everything here
+    must therefore hold with no setup of any kind."""
+
+    def test_the_same_path_always_gives_the_same_identity(self):
+        first = evaluator.project_identity("/home/justin/Code/Projects/Thing")
+        second = evaluator.project_identity("/home/justin/Code/Projects/Thing")
+        self.assertEqual(first, second)
+
+    def test_identity_survives_a_restart_because_it_is_not_stored(self):
+        """Derived, not remembered. A freshly imported evaluator -- standing in
+        for a reboot, or for another machine -- must produce the identical
+        colour, because nothing about it was ever written down."""
+        path = "/home/justin/Code/Projects/Thing"
+        reloaded = support.load_evaluator()
+        self.assertEqual(evaluator.project_identity(path),
+                         reloaded.project_identity(path))
+
+    def test_colour_is_a_lowercase_hex_triplet(self):
+        colour, _ = evaluator.project_identity("/home/justin/Code/Projects/Thing")
+        self.assertRegex(colour, r"^#[0-9a-f]{6}$")
+
+    def test_different_paths_generally_differ(self):
+        paths = [f"/home/justin/Code/Projects/P{n}" for n in range(40)]
+        colours = {evaluator.project_identity(p)[0] for p in paths}
+        self.assertGreater(len(colours), 30, "hash spread is poor")
+
+    def test_identicon_is_five_rows_of_five_bits(self):
+        _, grid = evaluator.project_identity("/home/justin/Code/Projects/Thing")
+        self.assertEqual(evaluator.IDENTICON_SIZE, len(grid))
+        for row in grid:
+            self.assertEqual(evaluator.IDENTICON_SIZE, len(row))
+            self.assertEqual(set(), set(row) - {"0", "1"})
+
+    def test_identicon_is_mirrored_left_to_right(self):
+        """Symmetry is what makes a hash look designed rather than like noise."""
+        _, grid = evaluator.project_identity("/home/justin/Code/Projects/Thing")
+        for row in grid:
+            self.assertEqual(row, row[::-1])
+
+    def test_colour_is_never_black_white_or_unreadable(self):
+        """Only hue varies; fixing lightness and saturation stops the hash from
+        occasionally producing something invisible against a panel."""
+        for n in range(200):
+            colour, _ = evaluator.project_identity(f"/some/path/{n}")
+            red, green, blue = (int(colour[i:i + 2], 16) for i in (1, 3, 5))
+            with self.subTest(colour=colour):
+                self.assertGreater(max(red, green, blue), 60)
+                self.assertLess(min(red, green, blue), 230)
+
+    def test_identity_is_independent_of_session_state(self):
+        """A project keeps its colour whatever the session is doing -- that is
+        what makes it identity rather than status."""
+        busy = evaluator.evaluate([support.session(status="busy")], now=NOW)
+        waiting = evaluator.evaluate(
+            [support.session(status="waiting", waitingFor="input needed")], now=NOW)
+        self.assertEqual(busy["sessions"][0]["project_colour"],
+                         waiting["sessions"][0]["project_colour"])
+
+    def test_every_rendered_session_carries_an_identity(self):
+        model = evaluator.evaluate(support.agents("mixed"), now=NOW, slots=99)
+        for entry in model["sessions"]:
+            with self.subTest(label=entry["label"]):
+                self.assertRegex(entry["project_colour"], r"^#[0-9a-f]{6}$")
+                self.assertEqual(evaluator.IDENTICON_SIZE, len(entry["identicon"]))
+
+    def test_a_missing_cwd_still_yields_a_usable_identity(self):
+        colour, grid = evaluator.project_identity(None)
+        self.assertRegex(colour, r"^#[0-9a-f]{6}$")
+        self.assertEqual(evaluator.IDENTICON_SIZE, len(grid))
+
+
 class TestPrivacy(unittest.TestCase):
     """Spec 4.2. The CLI hands us fields we must not pass on."""
 
@@ -226,6 +299,7 @@ class TestPrivacy(unittest.TestCase):
             "session_id", "short_id", "pid", "cwd", "label", "name", "state",
             "glyph", "colour", "attention", "waiting_for", "started_at",
             "started_at_local", "age_secs", "slot",
+            "project_colour", "identicon",
         }
         model = evaluator.evaluate(support.agents("sensitive"), now=NOW)
         self.assertEqual(set(), set(model["sessions"][0]) - allowed)
