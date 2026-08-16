@@ -83,6 +83,10 @@ Phase 1 complete as of 2026-08-16. `just doctor` renders live sessions today.
 | 3 | Konsole tab focus via D-Bus | Not started |
 | 4 | `error` / `rate_limit` rendering | Not started |
 
+Deferred by request, 2026-08-16: a flashing/pulsing timer on the amber and
+orange states, so a session that has been blocked a long time escalates rather
+than sitting at the same brightness.
+
 ### The architecture decision that now precedes Phase 1
 
 A prior-art sweep on 2026-08-16 turned up two things that bear on whether Phase 1

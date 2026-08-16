@@ -181,12 +181,20 @@ class TestRendererReadsOnlyEvaluatorFields(unittest.TestCase):
         trimming the list itself, the popup and `doctor` diverge."""
         self.assertIn("--slots", self.qml)
 
-    def test_every_colour_name_the_evaluator_emits_is_handled(self):
-        """A colour name with no case in colourFor() falls through to the
-        disabled/grey default, which would silently mis-render a state."""
-        handled = set(re.findall(r'case "(\w+)":', self.qml))
+    def test_every_colour_role_the_evaluator_emits_has_a_palette_entry(self):
+        """A role missing from the palette silently renders grey, which would
+        make two different states look identical in the panel."""
+        handled = set(re.findall(r'"(\w+)":\s*"#', self.qml))
         self.assertEqual(set(), set(evaluator.COLOUR.values()) - handled,
-                         "colourFor() has no case for every evaluator colour")
+                         "the QML palette has no entry for every evaluator role")
+
+    def test_the_palette_gives_every_role_a_distinct_colour(self):
+        """Colour carries the whole state distinction -- Justin's direction,
+        2026-08-16 -- so two roles sharing a value would be a silent merge."""
+        entries = re.findall(r'"(\w+)":\s*"(#[0-9a-fA-F]{6})"', self.qml)
+        values = [value for _, value in entries]
+        self.assertEqual(len(values), len(set(values)),
+                         f"duplicate colours in palette: {entries}")
 
 
 if __name__ == "__main__":

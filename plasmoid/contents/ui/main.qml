@@ -72,18 +72,33 @@ PlasmoidItem {
      * live Kirigami theme here is what makes the widget follow the user's
      * colour scheme instead of overriding it.
      */
+    /*
+     * The palette. Literal colours rather than Kirigami theme roles, which is a
+     * deliberate departure from the usual advice and worth justifying.
+     *
+     * Kirigami offers positive/neutral/negative/highlight, which is three
+     * usable semantic colours plus the user's accent. This widget needs four
+     * that stay distinguishable from each other at a glance, and the accent is
+     * whatever the user picked -- if theirs is orange, an accent-blue "idle"
+     * would collide with "needs a decision". State legibility is the entire
+     * product here, so it wins over scheme-matching.
+     *
+     * Chosen to hold up against both light and dark panel backgrounds.
+     */
+    readonly property var palette: ({
+        "none":      "#2e7d32",  // dark green  -- working, nothing required
+        "available": "#2196f3",  // blue        -- idle, your turn
+        "attention": "#ffc107",  // amber       -- blocked, needs an answer
+        "urgent":    "#ff6d00",  // orange      -- blocked, needs a decision
+        "neutral":   "#9e9e9e"   // grey        -- unclassified
+    })
+
     function colourFor(name) {
-        switch (name) {
-        case "attention": return Kirigami.Theme.neutralTextColor
-        case "active":    return Kirigami.Theme.positiveTextColor
-        case "neutral":   return Kirigami.Theme.disabledTextColor
-        // Deliberately the same grey, but reached only by a name this file has
-        // never heard of. Kept distinct from "neutral" so the case above is a
-        // decision and this one is a fallback -- a test asserts every colour
-        // the evaluator emits has its own case, and that only works if the
-        // default is not doing double duty.
-        default:          return Kirigami.Theme.disabledTextColor
-        }
+        // A role this file has never heard of falls back to grey rather than
+        // rendering nothing. A test asserts every role the evaluator emits has
+        // an entry above, so this path means the evaluator gained a role and
+        // the palette was not updated.
+        return palette[name] !== undefined ? palette[name] : palette["neutral"]
     }
 
     // ---- polling ----
@@ -154,7 +169,23 @@ PlasmoidItem {
         id: compact
 
         readonly property bool vertical: Plasmoid.formFactor === PlasmaCore.Types.Vertical
-        readonly property int glyphSize: Math.round(Kirigami.Units.gridUnit * 0.9)
+
+        /*
+         * Dots are drawn, not typed. The first version used the text glyphs
+         * "●" and "○", which cannot be sized honestly -- a bullet occupies
+         * roughly a third of its font's em box, so asking for a given diameter
+         * means guessing a font size and hoping. Drawing a circle makes the
+         * diameter mean the diameter.
+         *
+         * Size follows the panel's own thickness rather than a fixed number, so
+         * the widget suits a slim panel and a fat one without configuration.
+         * The cross axis is the free one -- the panel sets it -- so reading it
+         * here creates no binding loop, provided the cross axis's preferred
+         * size below is NOT derived from content. It is not.
+         */
+        readonly property int thickness: vertical ? width : height
+        readonly property int dotSize: Math.max(Kirigami.Units.iconSizes.small,
+                                                Math.round(thickness * 0.62))
 
         /*
          * Docking in a panel, horizontal or vertical.
@@ -178,11 +209,14 @@ PlasmoidItem {
 
         Layout.minimumWidth: vertical ? floorSize : contentWidth
         Layout.maximumWidth: vertical ? Number.POSITIVE_INFINITY : contentWidth
-        Layout.preferredWidth: contentWidth
+        // Preferred size on the CROSS axis must be a constant, never content:
+        // dotSize is derived from the cross axis, so feeding content back into
+        // it would close a binding loop.
+        Layout.preferredWidth: vertical ? floorSize : contentWidth
 
         Layout.minimumHeight: vertical ? contentHeight : floorSize
         Layout.maximumHeight: vertical ? contentHeight : Number.POSITIVE_INFINITY
-        Layout.preferredHeight: contentHeight
+        Layout.preferredHeight: vertical ? contentHeight : floorSize
 
         acceptedButtons: Qt.LeftButton
         onClicked: root.expanded = !root.expanded
@@ -191,41 +225,61 @@ PlasmoidItem {
             id: glyphRow
             anchors.centerIn: parent
             flow: compact.vertical ? GridLayout.TopToBottom : GridLayout.LeftToRight
-            columnSpacing: Kirigami.Units.smallSpacing
-            rowSpacing: Kirigami.Units.smallSpacing
+            // Gaps scale with the dots, so the strip keeps its rhythm on a slim
+            // panel and a fat one alike.
+            columnSpacing: Math.max(2, Math.round(compact.dotSize * 0.3))
+            rowSpacing: columnSpacing
 
             Repeater {
                 model: root.sessions
-                delegate: PlasmaComponents.Label {
+                delegate: Rectangle {
                     required property var modelData
-                    text: modelData.glyph
+                    Layout.preferredWidth: compact.dotSize
+                    Layout.preferredHeight: compact.dotSize
+                    radius: width / 2
                     color: root.colourFor(modelData.colour)
-                    font.pixelSize: compact.glyphSize
-                    font.bold: modelData.attention
+                    antialiasing: true
                 }
             }
 
-            // The badge borrows the highest-priority hidden session's glyph and
-            // colour -- decided by the evaluator, not here -- so a session
-            // needing attention still reads as needing it while hidden.
-            PlasmaComponents.Label {
+            // The badge borrows the highest-priority hidden session's colour --
+            // decided by the evaluator, not here -- so a hidden session needing
+            // attention still reads as needing it. The count sits inside the
+            // dot rather than beside it, so the strip stays one shape wide;
+            // that matters most in a vertical panel, where anything wider than
+            // a dot has nowhere to go.
+            Rectangle {
                 visible: root.overflow && root.overflow.count > 0
-                text: root.overflow ? "+" + root.overflow.count + root.overflow.glyph : ""
+                Layout.preferredWidth: compact.dotSize
+                Layout.preferredHeight: compact.dotSize
+                radius: width / 2
+                antialiasing: true
                 color: root.overflow ? root.colourFor(root.overflow.colour)
-                                     : Kirigami.Theme.disabledTextColor
-                font.pixelSize: Math.round(compact.glyphSize * 0.8)
-                font.bold: root.overflow ? root.overflow.attention : false
+                                     : root.palette["neutral"]
+
+                PlasmaComponents.Label {
+                    anchors.centerIn: parent
+                    text: root.overflow ? root.overflow.count : ""
+                    color: "white"
+                    font.pixelSize: Math.round(compact.dotSize * 0.62)
+                    font.bold: true
+                }
             }
 
             // Something to click when there is nothing to show, otherwise the
             // widget becomes a zero-width strip that cannot be opened.
-            PlasmaComponents.Label {
+            Rectangle {
                 visible: root.sessions.length === 0
                          && (!root.overflow || root.overflow.count === 0)
-                text: root.errorMsg !== "" ? "!" : "·"
-                color: root.errorMsg !== "" ? Kirigami.Theme.negativeTextColor
-                                            : Kirigami.Theme.disabledTextColor
-                font.pixelSize: compact.glyphSize
+                Layout.preferredWidth: compact.dotSize
+                Layout.preferredHeight: compact.dotSize
+                radius: width / 2
+                antialiasing: true
+                color: "transparent"
+                border.width: Math.max(1, Math.round(compact.dotSize * 0.09))
+                border.color: root.errorMsg !== ""
+                    ? Kirigami.Theme.negativeTextColor
+                    : root.palette["neutral"]
             }
         }
     }
@@ -285,13 +339,16 @@ PlasmoidItem {
                     contentItem: RowLayout {
                         spacing: Kirigami.Units.largeSpacing
 
-                        PlasmaComponents.Label {
-                            text: modelData.glyph
-                            color: root.colourFor(modelData.colour)
-                            font.pixelSize: Kirigami.Units.gridUnit
-                            font.bold: modelData.attention
+                        // Same dot as the panel, so the popup teaches the
+                        // colours rather than using a second vocabulary.
+                        Rectangle {
                             Layout.preferredWidth: Kirigami.Units.gridUnit
-                            horizontalAlignment: Text.AlignHCenter
+                            Layout.preferredHeight: Kirigami.Units.gridUnit
+                            Layout.alignment: Qt.AlignVCenter
+                            radius: width / 2
+                            antialiasing: true
+                            color: root.colourFor(modelData.colour)
+                            opacity: modelData.slot === null ? 0.55 : 1.0
                         }
 
                         ColumnLayout {

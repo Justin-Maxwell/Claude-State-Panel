@@ -24,10 +24,17 @@ EVALUATOR = REPO_ROOT / "evaluator" / "claude-state-eval.py"
 
 # ANSI, applied only when stdout is a terminal. Piping `doctor` into a file or
 # a bug report must not smuggle escape codes along with it.
+#
+# Keys are the evaluator's colour roles. 256-colour codes are used so the four
+# live states stay as distinguishable here as they are in the panel; the basic
+# 8 have no orange, which would collapse "needs a decision" into "needs an
+# answer" exactly where the difference matters.
 ANSI = {
-    "attention": "\033[33m",   # yellow -- blocked on you
-    "active": "\033[32m",      # green  -- working, or your turn to type
-    "neutral": "\033[90m",     # grey   -- unclassified
+    "urgent": "\033[38;5;208m",     # orange     -- blocked, needs a decision
+    "attention": "\033[38;5;220m",  # amber      -- blocked, needs an answer
+    "available": "\033[38;5;33m",   # blue       -- idle, your turn
+    "none": "\033[38;5;28m",        # dark green -- working, nothing required
+    "neutral": "\033[90m",          # grey       -- unclassified
 }
 DIM = "\033[2m"
 BOLD = "\033[1m"

@@ -81,18 +81,26 @@ GLYPH = {
     "unknown": "·",
 }
 
-# Colour *names*, deliberately not hex. The plasmoid maps these onto the active
-# Plasma colour scheme; `doctor` maps them onto ANSI. Hard-coding hex here would
-# make the widget ignore the user's theme.
+# Colour *roles*, deliberately not hex. The renderers decide what pixels a role
+# is worth; this file decides only what a state means.
 #
-# Provisional: Justin's direction is that working and pending-user-prompt are
-# both green, so only the two blocked states carry an alerting colour. The
-# specification's own colour table is not yet in this repo to check against.
+# Justin's direction, 2026-08-16, after running the widget: colour alone should
+# carry the state, and each of the four live states earns its own. Read the
+# names as urgency, not as hue:
+#
+#   none       nothing is required of you          working
+#   available  your turn, but nothing is blocked   idle
+#   attention  blocked, needs an answer            waiting-answer
+#   urgent     blocked, needs a decision           waiting-permission
+#
+# `available` is deliberately not the same role as `none`. An idle session is
+# waiting on Justin to type; a working one is not. His words: "being available
+# is an attention state".
 COLOUR = {
-    "waiting-permission": "attention",
+    "waiting-permission": "urgent",
     "waiting-answer": "attention",
-    "working": "active",
-    "idle": "active",
+    "idle": "available",
+    "working": "none",
     "unknown": "neutral",
 }
 
