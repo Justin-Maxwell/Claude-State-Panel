@@ -41,6 +41,153 @@ Phase 2 must not begin with any Phase 0 item unresolved.
 
 ## Resolved
 
+## N. `claude agents --json` already reports interactive session state, first-party
+
+- **Assumed:** the whole architecture. §4 exists because Claude Code was
+  believed to expose no queryable session state — issue
+  [#43058](https://github.com/anthropics/claude-code/issues/43058) says exactly
+  that ("no `claude --session-status` command, no state file, no Unix socket
+  API") and was **closed as not planned**. Hence the writer, the state file, the
+  slot bookkeeping and fifteen hook registrations: all of it infers from event
+  edges what nothing would tell us directly.
+- **Observed:** that is no longer true. `claude agents --json` (AgentView,
+  research preview, Claude Code ≥2.1.140; this machine runs **2.1.233**) lists
+  **interactive** sessions, not merely backgrounded ones:
+
+  ```json
+  {"pid": 14751, "cwd": "/home/justin/Code/Projects/Claude-State-Panel",
+   "kind": "interactive", "startedAt": 1786833291511,
+   "sessionId": "69e86564-...", "name": "claude-state-panel-97",
+   "status": "busy"}
+  ```
+
+  The published documentation states AgentView does *not* discover interactive
+  sessions in other terminals. **On this version it does.** Trust the
+  observation, not the doc page.
+- **Test:** 300 samples at 3s across 15 minutes, four concurrent sessions,
+  correlated against the probe capture. `status` took three values —
+  `idle`, `busy`, `waiting` — and a `waitingFor` field appeared alongside the
+  third.
+- **The correlation that matters.** A `PermissionRequest` hook fired at
+  12:21:01; AgentView reported `status: "waiting"`,
+  `waitingFor: "permission prompt"` at **12:21:04**, and held it for the 14
+  minutes the session sat genuinely blocked. The probe recorded **zero** events
+  for that session across the same window, confirming it really was blocked
+  rather than the report being stale. Latency hook→CLI is ~3s.
+- **Date:** 2026-08-16
+- **Consequence: this is a candidate replacement for the entire Phase 1
+  design**, and it is Justin's call, not mine.
+
+  What the CLI hands over for free, that §4–§6 were going to compute:
+
+  | Needed | Hook-derived plan | `claude agents --json` |
+  |---|---|---|
+  | which sessions exist | `SessionStart`/`SessionEnd` + liveness reap | the array |
+  | `claude_pid` | `os.getppid()`, finding 3 | `pid` |
+  | `cwd` | payload field | `cwd` |
+  | interactive or not | open question 10, three findings, unsolved | `kind` |
+  | working / idle | transition table | `status` |
+  | blocked on the user | `PreToolUse`+`Stop` inference | `status`+`waitingFor` |
+  | label | derived from `cwd`, collision-disambiguated | `name` |
+
+  It reports *state*, not edges, which dissolves three findings at a stroke:
+
+  - **Finding I (crash reaping)** — a dead session leaves the roster. No
+    `boot_id`, no `starttime`, no PID-reuse reasoning.
+  - **Finding 2 & 4 (interrupts)** — nothing to freeze, because nothing is
+    inferred from a missing event. No staleness ceiling to tune.
+  - **The escaped-question hole** — the state simply reverts. This was recorded
+    as the widget's weakest claim and it may not exist at all under this design.
+
+  **Costs, stated honestly.** It is a *research preview* on a version flag and
+  could change or vanish — the hook contract is far more stable. It costs a
+  process spawn per poll where hooks cost one write per edge. It adds ~3s of
+  latency plus up to one poll interval, against sub-second for a hook. And it
+  makes the widget depend on a Claude Code feature rather than on documented
+  hooks.
+
+  **Unverified, and it decides how complete the replacement is:** only
+  `waitingFor: "permission prompt"` has been observed. Whether an
+  `AskUserQuestion` yields a distinct value (the docs suggest `input needed`)
+  is untested, and §6 wants `waiting-answer` and `waiting-permission` rendered
+  differently. A second sampling run is in flight against exactly that.
+
+## O. Prior art: one Plasma widget does share this purpose, and it is three weeks old
+
+- **Assumed:** the README's premise, that the Claude-related Plasma widgets on
+  this machine are quota widgets and nothing occupies the session-state niche.
+  Justin asked for this to be re-verified before Phase 1.
+- **Observed:** the quota claim holds, and the niche claim no longer does.
+
+  **Every Claude Plasma *widget* found is a quota/usage widget** — none shows
+  session state: [claude-usage-widget](https://github.com/CraigBorrows/claude-usage-widget),
+  [plasma-claude-usage](https://github.com/izll/plasma-claude-usage),
+  [DdeDamian/claude-quota-widget](https://github.com/DdeDamian/claude-quota-widget),
+  [fuziontech/claude-quota-widget](https://github.com/fuziontech/claude-quota-widget),
+  [sizeak/claude-plasma-widget](https://github.com/sizeak/claude-plasma-widget),
+  [claude-usage-bar](https://github.com/Blimp-Labs/claude-usage-bar/pull/17),
+  and KDE Store [Claude Usage](https://store.kde.org/p/2331316) /
+  [AI Usage Monitor](https://store.kde.org/p/2353976). `plasmallm` is a chat
+  widget. `Claude-KDE-Plasma-Plugin` runs the opposite direction — it lets
+  Claude Code drive KDE.
+
+  **But [AgentDiode](https://discuss.kde.org/t/agentdiode-a-local-ai-coding-agent-status-indicator-for-kde-plasma/48991)
+  (announced 2026-07-28, [emreartz/AgentDiode](https://github.com/emreartz/AgentDiode))
+  shares this project's purpose**: a local KDE Plasma status indicator for AI
+  coding agents, showing which is working, waiting for input, or idle. Its
+  privacy stance is near-identical — no prompts, code, transcripts, API keys, or
+  telemetry.
+- **Date:** 2026-08-16
+- **Consequence:** the niche is occupied but not closed, and the differences are
+  real rather than face-saving:
+
+  | | AgentDiode | this project |
+  |---|---|---|
+  | form | standalone tray app, PySide6 + systemd user services | Plasma panel plasmoid, QML |
+  | agents | Claude Code, Codex, Antigravity, custom | Claude Code only |
+  | transport | hooks → Unix socket → daemon | hooks → state file (or finding N) |
+  | maturity | **4 commits, 0 stars, 2 forks** | Phase 0 |
+  | states | 7, incl. stale/disconnected on a configurable timeout | 6 planned |
+
+  It is a *tray* indicator, not a panel widget, and it is embryonic. More to the
+  point it shares this project's blind spot rather than solving it: its own
+  README concedes that for some agents there is *"no dedicated event for every
+  situation where a turn is waiting for a user answer"*, which is finding 2 & 4
+  arrived at independently. Nothing suggests it uses `claude agents --json`
+  (finding N), which is the one thing that would fix it.
+
+  **Justin's call, and it is a real one.** Adopting or contributing to
+  AgentDiode is a legitimate alternative to Phase 1. Against that: it is a
+  different shape (tray vs panel), carries four agents' worth of abstraction for
+  a one-agent need, and has four commits behind it.
+
+### Prior art outside KDE, which is where the design lessons are
+
+The idea is well-trodden on other bars, and two are worth reading before Phase 2:
+
+- [claude-waybar-status](https://github.com/Glicio/claude-waybar-status) is the
+  closest analogue to the planned design — hook-driven, state in
+  `$XDG_RUNTIME_DIR/claude-state.json` under `flock`, **two sticky slots**,
+  eviction of a slot-holder idle >15 min (`IDLE_THRESHOLD_SECS = 900`). Its
+  documented weakness is precisely finding I: *no explicit cleanup mechanism for
+  orphaned sessions; sessions without terminal events may persist indefinitely.*
+  Independent confirmation that the crash case is real and is routinely missed.
+- [gmr/claude-status](https://github.com/gmr/claude-status) (macOS) validates
+  sessions by **checking the process is still alive** and **walks the process
+  tree** to classify terminal vs IDE vs tmux — findings I and F/H, reached
+  independently. It also carries a `Compacting` state, which is why
+  `PreCompact`/`PostCompact` were registered in finding M.
+
+Also: [tmux-agent-indicator](https://github.com/accessd/tmux-agent-indicator),
+[tmux-agent-status](https://github.com/samleeney/tmux-agent-status),
+[cc-status-bar](https://github.com/usedhonda/cc-status-bar),
+[m1ckc3s/claude-status-bar](https://github.com/m1ckc3s/claude-status-bar),
+[claude-sessions-monitor](https://github.com/yepzdk/claude-sessions-monitor),
+and [ClaudeMon](https://claudemon.com/). The convergent design across all of
+them — hook-driven, per-session slots, a state file, staleness timeouts — is
+evidence the spec's architecture is the obvious one, and finding N is evidence
+it may now be the obsolete one.
+
 ## M. No interrupt hook exists by design, and we are registered on 11 of 31 events
 
 - **Assumed:** finding 2 & 4 established empirically that an Esc interrupt fires

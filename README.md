@@ -58,10 +58,33 @@ Phase 0 in progress, as of 2026-08-16. No implementation code written yet.
 | Phase | Deliverable | State |
 |---|---|---|
 | 0 | `probe/` harness; resolve every `⟨verify⟩` item touching hooks | **Complete for Phase 1 purposes** — probe live, 13 findings, every blocker resolved |
-| 1 | writer + evaluator + `doctor`, fully testable headless | **Unblocked, not started** |
+| 1 | writer + evaluator + `doctor`, fully testable headless | **Unblocked — but its premise is now in question, see below** |
 | 2 | plasmoid compact + popup; click copies `cwd` | Not started |
 | 3 | Konsole tab focus via D-Bus | Not started |
 | 4 | `error` / `rate_limit` rendering | Not started |
+
+### The architecture decision that now precedes Phase 1
+
+A prior-art sweep on 2026-08-16 turned up two things that bear on whether Phase 1
+should be built as specified.
+
+**1. `claude agents --json` already reports interactive session state.** The
+spec's whole inference layer — writer, state file, slot bookkeeping, fifteen hook
+registrations — exists because Claude Code was believed to expose no queryable
+state. On version 2.1.233 it does, for interactive sessions, including `kind`,
+`pid`, `cwd`, `status` and `waitingFor`. That is most of what the evaluator was
+going to compute, reported as *state* rather than inferred from event edges,
+which would dissolve the crash-reaping and interrupt-freezing problems entirely.
+It is a research preview, so it trades stability for simplicity. Finding N.
+
+**2. One Plasma project already shares this purpose**:
+[AgentDiode](https://github.com/emreartz/AgentDiode), announced 2026-07-28. It is
+a tray application rather than a panel widget, covers four agents, and is four
+commits old — but it is real, MIT, and takes the same privacy stance. Every
+other Claude Plasma widget found is a quota widget, so that half of the README's
+premise still holds. Finding O.
+
+Neither is a reason to stop; both are reasons not to start Phase 1 on autopilot.
 
 Resolved assumptions accumulate in `docs/findings.md`; observed hook sequences
 in `docs/hook-events.md`. The specification itself is **not yet in this repo** —
