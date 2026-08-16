@@ -1,0 +1,45 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<kcfg xmlns="http://www.kde.org/standards/kcfg/1.0"
+      xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+      xsi:schemaLocation="http://www.kde.org/standards/kcfg/1.0
+                          http://www.kde.org/standards/kcfg/1.0/kcfg.xsd">
+  <kcfgfile name=""/>
+  <group name="General">
+
+    <!--
+      Left empty on purpose. main.qml substitutes "$HOME/.local/bin/claude-state-panel"
+      when this is blank, so that KConfig never stores or tries to interpret a
+      "$HOME" of its own. Set an absolute path here to point the widget at a
+      repo checkout instead.
+    -->
+    <entry name="command" type="String">
+      <label>Path to the claude-state-panel command</label>
+      <default></default>
+    </entry>
+
+    <!--
+      Each poll spawns the Claude CLI, measured at 0.58s median wall time on
+      this machine. That is a real cost, not a free timer: at 5s intervals a
+      node process would be running about 12% of the time, forever. 8s keeps
+      "is something waiting on me" answerable at a glance at roughly 7%.
+      Lower it if you want faster notice and can spare the cycles.
+    -->
+    <entry name="pollInterval" type="Int">
+      <label>Milliseconds between polls</label>
+      <default>8000</default>
+      <min>1000</min>
+      <max>120000</max>
+    </entry>
+
+    <!-- How many sessions get their own glyph before the rest collapse into
+         the overflow badge. Passed through to the evaluator, which owns the
+         actual slot allocation. -->
+    <entry name="slotCount" type="Int">
+      <label>Sessions shown before overflow</label>
+      <default>4</default>
+      <min>1</min>
+      <max>12</max>
+    </entry>
+
+  </group>
+</kcfg>

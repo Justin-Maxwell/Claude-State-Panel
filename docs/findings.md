@@ -28,7 +28,6 @@ outstanding, none of which block Phase 1.
 
 | # | Question | Phase | State |
 |---|---|---|---|
-| 5 | Correct Plasma 6 QML import and API for the executable data engine | 2 | not started |
 | 6 | Konsole D-Bus object paths, interfaces, and the PID field matching a tab | 3 | not started |
 | 7 | Can a non-focused process raise a Konsole window under KWin on Wayland? | 3 | not started |
 | 8 | Does Konsole honour an OSC title sequence given the tab-title format? | 3 | not started |
@@ -40,6 +39,58 @@ finding C already established how `error_kind` must reach it.
 Phase 2 must not begin with any Phase 0 item unresolved.
 
 ## Resolved
+
+## 5. The Plasma 6 executable data engine: `plasma5support`, not `PlasmaCore`
+
+- **Assumed:** open question 5, listed as Phase 2 and unstarted. The Plasma 5
+  idiom was `PlasmaCore.DataSource { engine: "executable" }`, which does not
+  exist under `org.kde.plasma.core` in Plasma 6.
+- **Observed:** it moved rather than disappeared.
+
+  ```qml
+  import org.kde.plasma.plasma5support as P5Support
+
+  P5Support.DataSource {
+      engine: "executable"
+      connectedSources: []
+      onNewData: (sourceName, data) => {
+          disconnectSource(sourceName)          // one-shot; see below
+          // data["stdout"], data["exit code"]
+      }
+  }
+  ```
+
+  Drive it with `connectSource(cmd)` from a `Timer`, and **disconnect in
+  `onNewData`**: a source left connected re-runs the command on the engine's own
+  tick, which is a second, invisible poll interval fighting the configured one.
+- **Test:** answered by observation, not documentation. Two widgets already
+  installed on this machine — `com.cbo.claudeusage` and
+  `org.kde.plasma.claudelimits` — poll an external command on this exact Plasma
+  build, so the working idiom was already on disk. The API facts were read from
+  them; no code was copied, and `NOTICE`'s "no third-party code is vendored"
+  still holds.
+
+  Verified end to end headlessly, which is worth more than the import
+  resolving: `QT_QPA_PLATFORM=offscreen plasmoidviewer -a plasmoid/` loaded the
+  widget, stayed alive, produced **no QML diagnostics**, and was observed
+  spawning `claude-state-panel eval`, which in turn spawned
+  `claude agents --json`. QML, imports, data engine, command resolution and data
+  flow are all confirmed without a Plasma shell and without a visible window.
+- **Date:** 2026-08-16
+- **Consequence:** open question 5 resolved. All modules confirmed present under
+  `/usr/lib64/qt6/qml`: `plasmoid`, `core`, `components`, `extras`,
+  `plasma5support`, `kirigami`.
+
+  **Poll cost, measured rather than assumed.** `claude agents --json` takes
+  **0.58s median** wall time here. At a 5s interval that is a node process
+  running ~12% of the time, permanently. The default is therefore **8s** (~7%),
+  configurable from 1s to 120s. This is the one ongoing cost the CLI
+  architecture has that the hook architecture did not — hooks cost one write per
+  edge and nothing at rest — and it is the honest counterweight to everything
+  finding N deletes.
+
+  **Not verified, and not claimable from here:** whether the widget *looks*
+  right in a panel. That is Justin's acceptance test.
 
 ## N. `claude agents --json` already reports interactive session state, first-party
 

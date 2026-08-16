@@ -23,6 +23,18 @@ doctor:
 eval:
     bin/claude-state-panel eval
 
+# Symlink the CLI into ~/.local/bin, which is where the plasmoid looks by
+# default. Points at the checkout, so edits take effect without reinstalling
+# and there is still exactly one copy of the evaluator on the machine.
+install-cli:
+    mkdir -p ~/.local/bin
+    ln -sfn {{justfile_directory()}}/bin/claude-state-panel ~/.local/bin/claude-state-panel
+    ~/.local/bin/claude-state-panel doctor
+
+# Remove the symlink
+uninstall-cli:
+    rm -f ~/.local/bin/claude-state-panel
+
 # Install the plasmoid
 install-plasmoid:
     kpackagetool6 --type Plasma/Applet --install plasmoid/

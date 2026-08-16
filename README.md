@@ -79,7 +79,7 @@ Phase 1 complete as of 2026-08-16. `just doctor` renders live sessions today.
 |---|---|---|
 | 0 | `probe/` harness; resolve every `⟨verify⟩` item touching hooks | **Complete for Phase 1 purposes** — probe live, 13 findings, every blocker resolved |
 | 1 | evaluator + `doctor`, fully testable headless | **Done** — 63 tests, all live, green under three timezones |
-| 2 | plasmoid compact + popup; click copies `cwd` | Not started |
+| 2 | plasmoid compact + popup; click copies `cwd` | **Built** — loads clean and polls; **how it looks is unverified** |
 | 3 | Konsole tab focus via D-Bus | Not started |
 | 4 | `error` / `rate_limit` rendering | Not started |
 
@@ -187,13 +187,34 @@ name throughout — a rename pass over it is outstanding.
 ## Development
 
 ```
-just              # list recipes
-just test         # headless test suite, no Plasma shell required
-just doctor       # render current state (Phase 1 onward)
-just preview      # plasmoidviewer on the widget (Phase 2 onward)
+just                    # list recipes
+just test               # headless test suite, no Plasma shell required
+just test-tz            # the suite under three timezones
+just doctor             # render current state
+just install-cli        # symlink the CLI where the plasmoid looks for it
+just install-plasmoid   # register the widget with Plasma
+just preview            # plasmoidviewer on the widget
 ```
 
 No test may require a running Plasma shell or a live Claude Code session.
+
+`just install-cli` symlinks `bin/claude-state-panel` into `~/.local/bin`,
+pointing at the checkout rather than copying it. Edits take effect without
+reinstalling, and there is still exactly one evaluator on the machine — the
+widget and `doctor` run the same file, which is what makes "they cannot
+disagree" a fact rather than an intention.
+
+### What is verified, and what is not
+
+Verified headlessly, with no Plasma shell: the widget loads with no QML
+diagnostics, resolves its imports, runs `claude-state-panel eval` on its timer,
+and that in turn runs `claude agents --json`. A test also fails the build if the
+QML ever reads a field the evaluator does not emit, which is how the
+"cannot disagree" guarantee is kept honest rather than merely asserted.
+
+**Not verified: how it looks.** Whether the glyphs read at panel size, whether
+the colours work in your scheme, and whether the popup is the right shape are
+acceptance tests only you can run.
 
 ## Licence
 
