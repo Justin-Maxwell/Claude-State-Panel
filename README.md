@@ -63,6 +63,12 @@ Phase 0 in progress, as of 2026-08-14. No implementation code written yet.
 | 3 | Konsole tab focus via D-Bus | Not started |
 | 4 | `error` / `rate_limit` rendering | Not started |
 
+What a glyph is allowed to say is specified in `docs/state-vocabulary.md`, which
+supersedes the spec's glyph and colour table: one theme role per state, tool
+classes, error kinds, an intensity ramp in place of a binary stale flag,
+ordinals where a project has several live sessions, and a project hue rule. It
+is deliberately maximal and carries its own collapse order.
+
 Resolved assumptions accumulate in `docs/findings.md`; observed hook sequences
 in `docs/hook-events.md`. The specification itself is **not yet in this repo** —
 it lives at `~/Downloads/claude-session-panel-spec.md` and still carries the

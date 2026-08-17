@@ -36,12 +36,35 @@ One resolved. Eight outstanding from spec §13, plus one new item.
 | 11 | Is `setBadgeColor` present in Konsole's D-Bus introspection, given `QColor` has no registered metatype? | — |
 | 12 | Does `ProfileManager` pick up a `.profile` written after Konsole started, or is a restart required? | — |
 | 13 | Does `QIcon::fromTheme` find a newly installed hicolor icon without a cache rebuild? | — |
+| 14 | Are subagent sessions ever tracked as sessions in their own right, or do hooks fire only for top-level ones? | 1 |
+| 15 | Do ⛔ ❗ ❓ ⏳ 💳 ☁ render monochrome, or as colour emoji that override the theme role? Three are inherited from spec §5 | 2 |
 
 Items 1, 2, 4, 9 and 10 block Phase 1. Phase 2 must not begin with any Phase 0
 item unresolved. Items 11 to 13 belong to the Konsole identicon work, which is
 adjacent to the panel rather than a phase of it — see
 `docs/konsole-identicons.md`. They block nothing, and each is answered by
-`identicon/claude-state-identicon.py probe`.
+`identicon/claude-state-identicon.py probe`. Items 14 and 15 come from the state
+vocabulary in `docs/state-vocabulary.md`; 14 decides whether *top level* is
+something to detect or something automatic, and 15 could force a glyph
+substitution.
+
+## H. Kirigami exposes nine text colour roles, not four
+
+- **Assumed:** spec §5.3 maps seven states onto four roles —
+  `negativeTextColor` twice, `neutralTextColor`, `positiveTextColor`,
+  `textColor` twice, `disabledTextColor` — implying the theme had no more to
+  give, so colour necessarily repeated what the glyph said.
+- **Observed:** `platformtheme.h` declares `textColor`, `disabledTextColor`,
+  `activeTextColor`, `linkColor`, `visitedLinkColor`, `negativeTextColor`,
+  `neutralTextColor`, `positiveTextColor` and `highlightColor`, plus matching
+  `*BackgroundColor` roles. Nine text roles against seven states, so every state
+  can hold its own role with two left spare.
+- **Test:** read `src/platform/platformtheme.h` at `KDE/kirigami@master`.
+- **Date:** 2026-08-17
+- **Consequence:** one role per state, in `docs/state-vocabulary.md`. Colour
+  becomes a second information channel rather than a duplicate of the glyph, and
+  the no-hex-literals invariant is untouched — this needed no new colours, only
+  the ones already there.
 
 ## Resolved
 
