@@ -7,55 +7,36 @@ itself".
 
 Two independent implementations are used, and neither is vendored.
 
-## The references
+## The reference
 
-| | | |
-|---|---|---|
-| [dgraham/identicon](https://github.com/dgraham/identicon) | Rust | MIT |
-| [stewartlord/identicon.js](https://github.com/stewartlord/identicon.js) | JavaScript | BSD-2-Clause |
+[stewartlord/identicon.js](https://github.com/stewartlord/identicon.js),
+JavaScript, BSD-2-Clause. Normative for the grid *and* the colour.
 
-`dgraham/identicon` is **normative**: it describes itself as a port of GitHub's
-identicon algorithm, and it is the only one of the two that derives saturation
-and lightness from the digest rather than fixing them.
+Chosen because it can be **executed here** — node is installed — so every
+vector in `identicon/vectors.json` is output the library actually produced,
+not a paraphrase of its source. It is also BSD-2-Clause and widely used, so
+both the licensing and the "has anyone else checked this" questions are
+answered.
 
-`stewartlord/identicon.js` is the **executable cross-check**. It is an
-independent implementation by a different author in a different language, so
-where the two agree, the convention is a fact about the convention rather than
-about either author.
+## What was checked
 
-## What has been checked, and what has not
-
-**The grid: agreed, and executed.** 10 keys, 0 mismatches — including the empty
+**Grid and colour: executed, 10 keys, 0 mismatches.** Including the empty
 string, a single character, a non-GitHub host, and two path-shaped keys.
-`stewartlord/identicon.js` was run under node; `dgraham/identicon`'s rule was
-transcribed from `src/lib.rs` and `src/nibbler.rs`.
+`tests/test_conformance.py` asserts every one of them on every run.
 
-Both take 15 nibbles from an MD5 digest, high nibble first, painting where
-`nibble % 2 == 0`, filling the centre column top to bottom, then column 1
-mirrored to 3, then column 0 mirrored to 4.
+**Independently corroborated on the grid.**
+[dgraham/identicon](https://github.com/dgraham/identicon) — MIT, Rust, "a port
+of GitHub's identicon algorithm" — was transcribed from `src/lib.rs` and
+`src/nibbler.rs` and produces an identical grid for all ten keys. Two authors,
+two languages, one pattern: the grid rule is a property of the convention
+rather than of either implementation.
 
-**The colour: they disagree, so it was chosen rather than confirmed.**
+Its **colour rule differs** — hue from 12 bits, with saturation and lightness
+derived from two further digest bytes rather than fixed. **Not taken.** Mixing
+one project's grid with another's colour would produce a specification neither
+implements, and checking it would require a Rust toolchain this machine does
+not have and does not need.
 
-- `dgraham` — hue from 12 bits, `((byte[12] & 0x0f) << 8) | byte[13]` over
-  0–4095 mapped to 0–360°; saturation `65 − byte[14] × 20 ÷ 255`; lightness
-  `75 − byte[15] × 20 ÷ 255`
-- `stewartlord` — hue from the last 7 nibbles over `0xfffffff`; saturation and
-  lightness fixed at 70% and 50%
-
-`dgraham`'s is used, because it claims GitHub fidelity and the digest-derived
-saturation and lightness carry information the fixed pair discards.
-
-**The Rust reference has not been executed here.** `cargo` is not installed on
-`phenom`. Its rule was read from source and confirmed against the JavaScript
-library's real output for the grid, which is the part they share. Running it is
-still worth doing, and would upgrade the colour column from *transcribed* to
-*executed*:
-
-```
-sudo dnf install rustup && rustup-init -y
-cargo install --git https://github.com/dgraham/identicon --features build-bin
-printf '%s' 'github.com/justin-maxwell/claude-state-panel' | identicon > out.png
-```
 
 ## Regenerating
 

@@ -34,21 +34,22 @@ fuziontech/claude-quota-widget
   MIT licensed.
   Referenced for the justfile plasmoid development loop. No code copied.
 
+stewartlord/identicon.js
+  BSD-2-Clause licensed. Copyright (c) 2018, Stewart Lord.
+  The normative reference for the project identicon. Executed, unmodified and
+  unvendored, to generate identicon/vectors.json, which tests/test_conformance.py
+  asserts against. Its grid and colour rules were transliterated into Python; no
+  code was copied. Fetched on demand per identicon/reference/README.md and
+  git-ignored. If this library is ever vendored, its copyright notice,
+  conditions list and disclaimer must be reproduced here in full.
+
 dgraham/identicon
   MIT licensed.
-  The normative reference for the project identicon derivation. Its algorithm
-  was read from src/lib.rs and src/nibbler.rs and reimplemented in Python; no
-  code was copied, and the crate is not vendored or executed at build time.
-  See identicon/reference/README.md and docs/project-identicon-spec.md.
-
-stewartlord/identicon.js
-  BSD-2-Clause licensed.
-  Executed, unmodified and unvendored, to generate identicon/vectors.json --
-  the independent cross-check that the grid rule is a property of the
-  convention rather than of one author. Fetched on demand by
-  identicon/reference/README.md and git-ignored; no code copied.
-  Copyright (c) 2018, Stewart Lord. If this library is ever vendored, its
-  copyright notice, conditions list and disclaimer must be reproduced here.
+  Evaluated, not used. Its grid rule was transcribed from src/lib.rs and
+  src/nibbler.rs and confirmed to agree with the reference on all ten vectors,
+  which is the evidence that the grid is a property of the convention rather
+  than of one author. Its colour rule differs and was not taken. No code copied,
+  nothing vendored, and it is not required to build or test this project.
 
 If code from any MIT-licensed source above is later incorporated, its copyright
 notice and permission notice must be retained here, and the combined work

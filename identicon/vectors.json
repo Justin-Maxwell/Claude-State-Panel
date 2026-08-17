@@ -9,7 +9,7 @@
    "10101",
    "01010"
   ],
-  "colour": "#5da0cd",
+  "foreground": "#2692d9",
   "background": "#f0f0f0"
  },
  {
@@ -22,7 +22,7 @@
    "01110",
    "10101"
   ],
-  "colour": "#95d3e3",
+  "foreground": "#26b4d9",
   "background": "#f0f0f0"
  },
  {
@@ -35,7 +35,7 @@
    "10001",
    "01010"
   ],
-  "colour": "#d7cb59",
+  "foreground": "#d9c826",
   "background": "#f0f0f0"
  },
  {
@@ -48,7 +48,7 @@
    "11011",
    "00100"
   ],
-  "colour": "#b4d150",
+  "foreground": "#b1d926",
   "background": "#f0f0f0"
  },
  {
@@ -61,7 +61,7 @@
    "10001",
    "11011"
   ],
-  "colour": "#a369c8",
+  "foreground": "#9426d9",
   "background": "#f0f0f0"
  },
  {
@@ -74,7 +74,7 @@
    "00100",
    "01110"
   ],
-  "colour": "#bf98e5",
+  "foreground": "#8026d9",
   "background": "#f0f0f0"
  },
  {
@@ -87,7 +87,7 @@
    "10101",
    "11111"
   ],
-  "colour": "#7ee06d",
+  "foreground": "#41d926",
   "background": "#f0f0f0"
  },
  {
@@ -100,7 +100,7 @@
    "01010",
    "11111"
   ],
-  "colour": "#e0a085",
+  "foreground": "#d95b26",
   "background": "#f0f0f0"
  },
  {
@@ -113,7 +113,7 @@
    "11011",
    "10101"
   ],
-  "colour": "#cd71db",
+  "foreground": "#c026d9",
   "background": "#f0f0f0"
  },
  {
@@ -126,7 +126,7 @@
    "11011",
    "11011"
   ],
-  "colour": "#78a7df",
+  "foreground": "#2677d9",
   "background": "#f0f0f0"
  }
 ]

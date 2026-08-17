@@ -39,6 +39,12 @@ import zlib
 # ---------------------------------------------------------------------------
 
 GRID = 5
+
+# The reference fixes both rather than deriving them from the digest. Named
+# once because they were previously written out at nine call sites, which is
+# how a default drifts from the specification without anyone editing the rule.
+SATURATION = 0.7
+LIGHTNESS = 0.5
 ICON_PREFIX = "claude-state-identicon"
 INSTALL_SIZES = (16, 22, 24, 32, 48, 64, 128, 256)
 
@@ -191,28 +197,45 @@ def resolve_key(path=None, explicit=None):
 
 
 def _digest(key):
-    return hashlib.md5(key.encode("utf-8")).digest()
+    """MD5 as lowercase hex.
+
+    Hex rather than bytes because the reference consumes the digest as *hex
+    characters* -- one nibble per grid cell, and the last seven characters as
+    the hue. Working in hex keeps this readable next to the reference instead
+    of turning every rule into shifts and masks.
+    """
+    return hashlib.md5(key.encode("utf-8")).hexdigest()
 
 
 def identicon_grid(key):
-    """Return the 5x5 grid as a list of rows of bools."""
+    """Return the 5x5 grid as a list of rows of bools.
+
+    Conforms to stewartlord/identicon.js, whose own comment reads:
+
+        the first 15 characters of the hash control the pixels (even/odd)
+        they are drawn down the middle first, then mirrored outwards
+
+    So characters 0-4 fill the centre column top to bottom, 5-9 fill column 1
+    and mirror it to 3, and 10-14 fill column 0 and mirror it to 4. Even is
+    foreground. Pinned in identicon/vectors.json.
+    """
     digest = _digest(key)
     grid = [[False] * GRID for _ in range(GRID)]
-    for column in range(3):
-        for row in range(GRID):
-            if digest[column * GRID + row] % 2 == 0:
-                grid[row][column] = True
-                grid[row][GRID - 1 - column] = True
+    for index in range(15):
+        painted = int(digest[index], 16) % 2 == 0
+        column, row = divmod(index, GRID)
+        grid[row][2 - column] = painted
+        grid[row][2 + column] = painted
     return grid
 
 
 def identicon_hue(key):
-    """Hue in degrees, from the one digest byte the grid does not consume.
+    """Hue as a fraction of a turn, from the last seven hex characters.
 
-    Taking it from the same digest means the colour and the pattern cannot
-    drift apart.
+    28 bits over 0xfffffff, per the reference. Drawn from the same digest as
+    the grid, so colour and pattern cannot drift apart.
     """
-    return _digest(key)[15] * 360 // 256
+    return int(_digest(key)[-7:], 16) / 0xFFFFFFF
 
 
 def _quantise(value):
@@ -225,11 +248,48 @@ def _quantise(value):
     return int(value * 255 + 0.5)
 
 
-def identicon_colour(key, saturation=0.55, lightness=0.50):
-    """Return the foreground colour as an (r, g, b) triple of 0-255 ints."""
-    red, green, blue = colorsys.hls_to_rgb(
-        identicon_hue(key) / 360.0, lightness, saturation
-    )
+def _hsl_to_rgb(hue, saturation, lightness):
+    """The reference's own HSL conversion, transliterated.
+
+    Not `colorsys.hls_to_rgb`. The reference mutates `s` and `b` while building
+    the sector table, and indexes it with `h|16` and `h|8` -- an integer trick
+    for the six-sector rotation. Standard library conversion agrees on most
+    inputs but this is a conformance target, so the arithmetic is reproduced
+    rather than approximated. Verified against the library's own output for
+    every key in identicon/vectors.json.
+    """
+    hue *= 6.0
+    fraction = hue % 1
+
+    spread = saturation * (lightness if lightness < 0.5 else 1 - lightness)
+    high = lightness + spread
+    doubled = spread * 2
+    low = high - doubled
+
+    sectors = [
+        high,
+        high - fraction * spread * 2,
+        low,
+        low,
+        low + fraction * doubled,
+        low + doubled,
+    ]
+
+    sector = int(hue)
+    return (sectors[sector % 6],
+            sectors[(sector | 16) % 6],
+            sectors[(sector | 8) % 6])
+
+
+def identicon_colour(key, saturation=0.7, lightness=0.5):
+    """Return the foreground colour as an (r, g, b) triple of 0-255 ints.
+
+    Defaults are the reference's: 70% saturation, 50% lightness, both fixed
+    rather than derived. dgraham/identicon derives them from two further digest
+    bytes; that variant was evaluated and not taken, because mixing two
+    references would have produced a specification neither of them implements.
+    """
+    red, green, blue = _hsl_to_rgb(identicon_hue(key), saturation, lightness)
     return (_quantise(red), _quantise(green), _quantise(blue))
 
 
@@ -306,7 +366,7 @@ def _geometry(size):
     return cell, margin
 
 
-def render_rgba(key, size, saturation=0.55, lightness=0.50, background=None):
+def render_rgba(key, size, saturation=SATURATION, lightness=LIGHTNESS, background=None):
     """Return raw RGBA bytes for a square identicon of the given size."""
     grid = identicon_grid(key)
     red, green, blue = identicon_colour(key, saturation, lightness)
@@ -360,7 +420,7 @@ def render_png(key, size, **kwargs):
     return encode_png(render_rgba(key, size, **kwargs), size, size)
 
 
-def render_svg(key, size=256, saturation=0.55, lightness=0.50, background=None):
+def render_svg(key, size=256, saturation=SATURATION, lightness=LIGHTNESS, background=None):
     grid = identicon_grid(key)
     colour = hex_colour(identicon_colour(key, saturation, lightness))
     cell, margin = _geometry(size)
@@ -448,7 +508,7 @@ HALF_BLOCK = "▀"
 FILLED_BLOCK = "█"
 
 
-def render_half_blocks(key, depth=TRUECOLOR, saturation=0.55, lightness=0.50):
+def render_half_blocks(key, depth=TRUECOLOR, saturation=SATURATION, lightness=LIGHTNESS):
     """The identicon as three text rows of five characters.
 
     Compact enough to print on every return of control without taking the
@@ -476,8 +536,8 @@ def render_half_blocks(key, depth=TRUECOLOR, saturation=0.55, lightness=0.50):
 def render_banner(key, source=None, depth=TRUECOLOR, **kwargs):
     """The compact identicon with the project name beside it."""
     rows = render_half_blocks(key, depth, **kwargs)
-    colour = identicon_colour(key, kwargs.get("saturation", 0.55),
-                              kwargs.get("lightness", 0.50))
+    colour = identicon_colour(key, kwargs.get("saturation", SATURATION),
+                              kwargs.get("lightness", LIGHTNESS))
     name = project_name(key)
     if depth != NONE:
         name = f"{_fg(colour, depth)}{name}{RESET}"
@@ -487,8 +547,8 @@ def render_banner(key, source=None, depth=TRUECOLOR, **kwargs):
 
 def render_line(key, depth=TRUECOLOR, **kwargs):
     """One line: the colour, then the project name. For the tightest prompts."""
-    colour = identicon_colour(key, kwargs.get("saturation", 0.55),
-                              kwargs.get("lightness", 0.50))
+    colour = identicon_colour(key, kwargs.get("saturation", SATURATION),
+                              kwargs.get("lightness", LIGHTNESS))
     mark = FILLED_BLOCK
     if depth != NONE:
         mark = f"{_fg(colour, depth)}{FILLED_BLOCK}{RESET}"
@@ -1155,11 +1215,11 @@ def build_parser():
         else:
             target.set_defaults(key=None)
         if render:
-            target.add_argument("--saturation", type=float, default=0.55)
-            target.add_argument("--lightness", type=float, default=0.50)
+            target.add_argument("--saturation", type=float, default=SATURATION)
+            target.add_argument("--lightness", type=float, default=LIGHTNESS)
             target.add_argument("--background", help="six digit hex; default transparent")
         else:
-            target.set_defaults(saturation=0.55, lightness=0.50, background=None)
+            target.set_defaults(saturation=SATURATION, lightness=LIGHTNESS, background=None)
         if session:
             target.add_argument("--session", help="service:/Sessions/N; default from the environment")
         else:
