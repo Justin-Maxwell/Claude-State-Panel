@@ -17,6 +17,7 @@ Standard library only. Every subprocess is invoked with an argument list.
 """
 
 import argparse
+import base64
 import colorsys
 import hashlib
 import json
@@ -518,12 +519,109 @@ def render_line(key, depth=TRUECOLOR, **kwargs):
     return [f"{mark} {project_name(key)}"]
 
 
-STYLES = {
-    "banner": render_banner,
-    "compact": lambda key, source=None, depth=TRUECOLOR, **kw: render_half_blocks(key, depth, **kw),
-    "line": lambda key, source=None, depth=TRUECOLOR, **kw: render_line(key, depth, **kw),
+# --- Inline images ----------------------------------------------------------
+#
+# The blocks above are an approximation. Where the terminal can take a real
+# image, send the PNG itself, base64 in an escape sequence.
+#
+# Konsole implements the iTerm2 file protocol: Vt102Emulation::osc_put matches
+# the literal "1337;File=" and then waits for the ":" terminator, so arguments
+# between the two are tolerated and ignored. It also handles kitty APC graphics
+# and sixel.
+
+ITERM2 = "iterm2"
+KITTY = "kitty"
+BLOCKS = "blocks"
+PROTOCOLS = (ITERM2, KITTY, BLOCKS)
+
+# Native pixel size for the inline image. Konsole ignores the protocol's own
+# width and height arguments, so the PNG's own size is what decides how big it
+# lands: five cells of eight pixels, about two text rows tall.
+INLINE_SIZE = 40
+
+
+def resolve_protocol(requested=None, environ=None):
+    """Pick a graphics protocol from the environment.
+
+    Detection is by environment variable rather than by querying the terminal,
+    because a hook that waits on a terminal reply can hang a turn if nothing
+    answers.
+    """
+    environ = os.environ if environ is None else environ
+    if requested and requested != "auto":
+        return requested
+    if environ.get("NO_COLOR") is not None:
+        return BLOCKS
+    if environ.get("KITTY_WINDOW_ID") or "kitty" in environ.get("TERM", "").lower():
+        return KITTY
+    if environ.get("KONSOLE_VERSION") or environ.get("KONSOLE_DBUS_SESSION"):
+        return ITERM2
+    if environ.get("TERM_PROGRAM", "") in ("iTerm.app", "WezTerm", "ghostty", "vscode"):
+        return ITERM2
+    return BLOCKS
+
+
+def iterm2_image(png):
+    """OSC 1337 File, the iTerm2 inline image protocol.
+
+    No argument may contain a colon, since the colon is what terminates the
+    argument list and begins the payload.
+    """
+    payload = base64.b64encode(png).decode("ascii")
+    args = ";".join(["inline=1", f"size={len(png)}", "preserveAspectRatio=1"])
+    return f"\033]1337;File={args}:{payload}\a"
+
+
+def kitty_image(png, chunk_size=4096):
+    """APC _G, the kitty graphics protocol. Chunked, as the protocol requires."""
+    payload = base64.b64encode(png).decode("ascii")
+    chunks = [payload[i:i + chunk_size] for i in range(0, len(payload), chunk_size)] or [""]
+    out = []
+    for index, chunk in enumerate(chunks):
+        more = 1 if index < len(chunks) - 1 else 0
+        control = f"a=T,f=100,m={more}" if index == 0 else f"m={more}"
+        out.append(f"\033_G{control};{chunk}\033\\")
+    return "".join(out)
+
+
+def render_inline(key, protocol, size=INLINE_SIZE, **kwargs):
+    """The identicon as a real image, or None if the protocol cannot carry one."""
+    if protocol not in (ITERM2, KITTY):
+        return None
+    png = render_png(key, size, **kwargs)
+    return iterm2_image(png) if protocol == ITERM2 else kitty_image(png)
+
+
+def render(key, style="icon", source=None, depth=TRUECOLOR, protocol=BLOCKS,
+           size=INLINE_SIZE, **kwargs):
+    """Return everything to write for one identicon, trailing newline included.
+
+    The default is the icon and nothing else — no project name, no key. The
+    identicon is the message; anything beside it is the terminal's own business.
+    """
+    if style == "icon":
+        inline = render_inline(key, protocol, size, **kwargs)
+        if inline is not None:
+            return inline + "\n"
+        style = BLOCKS
+
+    if style == "image":
+        inline = render_inline(key, protocol if protocol != BLOCKS else ITERM2,
+                               size, **kwargs)
+        return (inline or "") + "\n"
+
+    lines = _BLOCK_STYLES[style](key, source=source, depth=depth, **kwargs)
+    return "".join(line + "\n" for line in lines)
+
+
+_BLOCK_STYLES = {
+    BLOCKS: lambda key, source=None, depth=TRUECOLOR, **kw: render_half_blocks(key, depth, **kw),
     "full": lambda key, source=None, depth=TRUECOLOR, **kw: render_ansi(key).splitlines(),
+    "banner": render_banner,
+    "line": lambda key, source=None, depth=TRUECOLOR, **kw: render_line(key, depth, **kw),
 }
+
+STYLES = ("icon", "image", BLOCKS, "full", "banner", "line")
 
 
 # ---------------------------------------------------------------------------
@@ -1000,15 +1098,20 @@ def cmd_emit(args):
             path = payload_cwd(sys.stdin)
         key, source = resolve_key(path, args.key)
 
-        depth = resolve_colour_depth(args.colour)
-        renderer = STYLES[args.style]
-        lines = renderer(key, source=source, depth=depth,
-                         saturation=args.saturation, lightness=args.lightness)
+        text = render(
+            key,
+            style=args.style,
+            source=source,
+            depth=resolve_colour_depth(args.colour),
+            protocol=resolve_protocol(args.protocol),
+            size=args.size,
+            saturation=args.saturation,
+            lightness=args.lightness,
+        )
 
         stream, is_tty = open_output()
         try:
-            for line in lines:
-                stream.write(line + "\n")
+            stream.write(text)
             stream.flush()
         finally:
             if is_tty:
@@ -1166,13 +1269,17 @@ def build_parser():
                     "the controlling terminal when there is one. Always exits 0.",
     )
     add_common(emit, render=True)
-    emit.add_argument("--style", choices=sorted(STYLES), default="banner")
+    emit.add_argument("--style", choices=STYLES, default="icon",
+                      help="icon sends a real image where the terminal takes one")
+    emit.add_argument("--protocol", choices=("auto", *PROTOCOLS), default="auto")
+    emit.add_argument("--size", type=int, default=INLINE_SIZE,
+                      help="inline image side in pixels")
     emit.add_argument("--colour", choices=("auto", *COLOUR_DEPTHS), default="auto")
     emit.set_defaults(func=cmd_emit)
 
     hooks = sub.add_parser("hooks", help="print the hook registration to paste")
     add_common(hooks, path=False)
-    hooks.add_argument("--style", choices=sorted(STYLES), default="banner")
+    hooks.add_argument("--style", choices=STYLES, default="icon")
     hooks.set_defaults(func=cmd_hooks)
 
     vectors = sub.add_parser("vectors", help="print the conformance vectors as JSON")

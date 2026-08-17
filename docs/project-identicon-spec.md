@@ -196,17 +196,46 @@ default.
 
 ### Terminal
 
+**Send the real image where the terminal can take one.** Text blocks are an
+approximation of a 5×5 grid; an inline image is the grid. An implementation
+SHOULD prefer, in order:
+
+1. **iTerm2 inline image protocol**, `OSC 1337`. The raster PNG, base64, in
+   `ESC ] 1337 ; File = <args> : <base64> BEL`. Arguments SHOULD include
+   `inline=1`, `size=<byte count>` and `preserveAspectRatio=1`. **No argument
+   may contain a colon**, since the colon terminates the argument list and
+   begins the payload.
+2. **kitty graphics protocol**, `APC _G`. `a=T,f=100`, base64 payload chunked at
+   4096 characters, every chunk but the last carrying `m=1`.
+3. **Text blocks**, below.
+
+Konsole implements the iTerm2 protocol: `Vt102Emulation::osc_put` matches the
+literal `1337;File=` and then waits for the `:` terminator, so arguments between
+the two are accepted and ignored. It also handles kitty APC graphics and sixel.
+Because Konsole ignores the protocol's own width and height arguments, the PNG's
+own pixel size decides how large the identicon lands; 40 pixels is about two
+text rows.
+
+Protocol selection SHOULD be by environment — `KITTY_WINDOW_ID` or a `TERM`
+containing `kitty`; `KONSOLE_VERSION` or `KONSOLE_DBUS_SESSION`; a known
+`TERM_PROGRAM`. It MUST NOT be by querying the terminal and waiting for a reply:
+this runs in a hook, and a reply that never comes hangs the turn.
+
+**Nothing but the identicon is printed.** No project name, no key, no label. The
+mark is the message.
+
+### Text blocks, the fallback
+
 Two grid rows per text row, drawn with `U+2580 UPPER HALF BLOCK`: foreground is
 the identicon colour where the upper grid row is filled, background where the
 lower one is. The fifth grid row pairs with a blank row. This gives **five
 characters wide by three tall**, which comes out roughly square given typical
-cell aspect, and is small enough to print on every return of control without
-taking the terminal over.
+cell aspect. All 25 cells are represented; only the resolution is lost.
 
 Colour depth SHOULD be chosen as: `NO_COLOR` set in the environment means no
-colour at all, per no-color.org; `COLORTERM` of `truecolor` or `24bit` means
-24-bit; otherwise the xterm 256-colour cube, `16 + 36r + 6g + b` with each
-component quantised as `floor(c * 5 / 255 + 0.5)`.
+colour at all, per no-color.org, and also suppresses inline images; `COLORTERM`
+of `truecolor` or `24bit` means 24-bit; otherwise the xterm 256-colour cube,
+`16 + 36r + 6g + b` with each component quantised as `floor(c * 5 / 255 + 0.5)`.
 
 Without colour, the grid MUST still be legible, since colour is never allowed to
 be the only channel: use `█` for both rows filled, `▀` for the upper only, `▄`

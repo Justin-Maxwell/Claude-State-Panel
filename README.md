@@ -106,9 +106,12 @@ is its conformance suite. Three consumers so far:
 
 **On every return of control.** A hook prints the identicon when a turn ends or
 control comes back to you — `Stop`, `PermissionRequest`, `Elicitation`,
-`SessionEnd`. Five characters by three, in colour, beside the project name.
-`Notification` is left out on purpose: `idle_prompt` fires exactly 60s after
-`Stop`, so registering both would print the same mark twice a minute apart.
+`SessionEnd`. The icon and nothing else: no project name, no key. Konsole takes
+the iTerm2 inline image protocol, so it gets the actual PNG, base64 in an escape
+sequence, at the full 5×5; terminals that can't are given a half-block
+approximation instead. `Notification` is left out on purpose: `idle_prompt`
+fires exactly 60s after `Stop`, so registering both would print the same mark
+twice a minute apart.
 
 ```
 just identicon-emit     # see it

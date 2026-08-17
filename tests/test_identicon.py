@@ -6,6 +6,7 @@ is also how the "argument list, never a composed shell string" invariant is
 kept honest.
 """
 
+import base64
 import io
 import json
 import os
@@ -616,14 +617,13 @@ class TestTerminalRendering(unittest.TestCase):
                 with self.subTest(depth=depth):
                     self.assertTrue(row.endswith(ident.RESET))
 
-    def test_every_style_produces_lines(self):
-        for name, renderer in ident.STYLES.items():
+    def test_every_style_produces_something_ending_in_a_newline(self):
+        for name in ident.STYLES:
             with self.subTest(style=name):
-                lines = renderer(self.KEY, source="remote", depth=ident.NONE,
-                                 saturation=0.55, lightness=0.5)
-                self.assertTrue(lines)
-                for line in lines:
-                    self.assertNotIn("\n", line)
+                text = ident.render(self.KEY, style=name, source="remote",
+                                    depth=ident.NONE, protocol=ident.ITERM2)
+                self.assertTrue(text)
+                self.assertTrue(text.endswith("\n"))
 
     def test_the_banner_names_the_project(self):
         lines = ident.render_banner(self.KEY, source="remote", depth=ident.NONE)
@@ -632,6 +632,130 @@ class TestTerminalRendering(unittest.TestCase):
     def test_the_banner_hides_a_path_key_rather_than_printing_it(self):
         lines = ident.render_banner("/home/j/thing", source="path", depth=ident.NONE)
         self.assertNotIn("/home/j/thing", "".join(lines))
+
+
+class TestInlineImages(unittest.TestCase):
+    """The blocks are an approximation; this sends the actual PNG."""
+
+    KEY = "github.com/owner/repo"
+
+    def test_iterm2_carries_a_decodable_png(self):
+        png = ident.render_png(self.KEY, 40)
+        sequence = ident.iterm2_image(png)
+        self.assertTrue(sequence.startswith("\033]1337;File="))
+        self.assertTrue(sequence.endswith("\a"))
+        payload = sequence.partition(":")[2].rstrip("\a")
+        self.assertEqual(base64.b64decode(payload), png)
+
+    def test_the_declared_size_is_the_real_byte_count(self):
+        png = ident.render_png(self.KEY, 40)
+        args = ident.iterm2_image(png).partition(":")[0]
+        self.assertIn(f"size={len(png)}", args)
+
+    def test_no_argument_contains_a_colon(self):
+        # The colon terminates the argument list and begins the payload, so one
+        # inside an argument would truncate the image.
+        args = ident.iterm2_image(ident.render_png(self.KEY, 40)).partition(":")[0]
+        self.assertNotIn(":", args[len("\033]1337;File="):])
+
+    def test_iterm2_declares_inline_rather_than_download(self):
+        args = ident.iterm2_image(ident.render_png(self.KEY, 40)).partition(":")[0]
+        self.assertIn("inline=1", args)
+
+    def test_the_image_is_the_grid_at_full_five_by_five(self):
+        # Not the block approximation: the PNG carries all 25 cells.
+        png = ident.render_png(self.KEY, 40)
+        width, height = struct.unpack(">II", png[16:24])
+        self.assertEqual((width, height), (40, 40))
+
+    def test_kitty_chunks_and_terminates(self):
+        png = ident.render_png(self.KEY, 256)
+        sequence = ident.kitty_image(png, chunk_size=64)
+        self.assertTrue(sequence.startswith("\033_Ga=T,f=100,m="))
+        self.assertTrue(sequence.endswith("\033\\"))
+        chunks = [part for part in sequence.split("\033_G") if part]
+        self.assertGreater(len(chunks), 1)
+
+    def test_kitty_payload_reassembles_to_the_png(self):
+        png = ident.render_png(self.KEY, 256)
+        sequence = ident.kitty_image(png, chunk_size=64)
+        payload = "".join(
+            part.partition(";")[2].removesuffix("\033\\")
+            for part in sequence.split("\033_G") if part
+        )
+        self.assertEqual(base64.b64decode(payload), png)
+
+    def test_only_the_last_kitty_chunk_says_no_more(self):
+        sequence = ident.kitty_image(ident.render_png(self.KEY, 256), chunk_size=64)
+        parts = [part for part in sequence.split("\033_G") if part]
+        for part in parts[:-1]:
+            self.assertIn("m=1", part.partition(";")[0])
+        self.assertIn("m=0", parts[-1].partition(";")[0])
+
+    def test_blocks_protocol_yields_no_image(self):
+        self.assertIsNone(ident.render_inline(self.KEY, ident.BLOCKS))
+
+    def test_icon_style_falls_back_to_blocks_without_a_protocol(self):
+        text = ident.render(self.KEY, style="icon", protocol=ident.BLOCKS,
+                            depth=ident.NONE)
+        self.assertNotIn("\033", text)
+        self.assertEqual(len(text.rstrip("\n").split("\n")), 3)
+
+    def test_icon_style_carries_no_text_at_all(self):
+        # "No text, just the icon."
+        for protocol in (ident.ITERM2, ident.KITTY):
+            text = ident.render(self.KEY, style="icon", protocol=protocol)
+            with self.subTest(protocol=protocol):
+                self.assertNotIn("repo", text)
+                self.assertNotIn(self.KEY, text)
+
+    def test_the_block_fallback_carries_no_text_either(self):
+        text = ident.render(self.KEY, style="icon", protocol=ident.BLOCKS,
+                            depth=ident.NONE)
+        self.assertNotIn("repo", text)
+
+
+class TestProtocolResolution(unittest.TestCase):
+    def test_kitty_is_detected_two_ways(self):
+        for env in ({"KITTY_WINDOW_ID": "1"}, {"TERM": "xterm-kitty"}):
+            with self.subTest(env=env):
+                self.assertEqual(ident.resolve_protocol(None, env), ident.KITTY)
+
+    def test_konsole_gets_the_iterm2_protocol(self):
+        # Vt102Emulation matches "1337;File=" then waits for the colon.
+        for env in ({"KONSOLE_VERSION": "250800"},
+                    {"KONSOLE_DBUS_SESSION": "/Sessions/1"}):
+            with self.subTest(env=env):
+                self.assertEqual(ident.resolve_protocol(None, env), ident.ITERM2)
+
+    def test_known_iterm2_capable_terminals(self):
+        for program in ("iTerm.app", "WezTerm", "ghostty"):
+            with self.subTest(program=program):
+                self.assertEqual(
+                    ident.resolve_protocol(None, {"TERM_PROGRAM": program}),
+                    ident.ITERM2,
+                )
+
+    def test_an_unknown_terminal_falls_back_to_blocks(self):
+        self.assertEqual(ident.resolve_protocol(None, {"TERM": "xterm"}), ident.BLOCKS)
+
+    def test_no_color_suppresses_images_too(self):
+        env = {"NO_COLOR": "1", "KONSOLE_VERSION": "250800"}
+        self.assertEqual(ident.resolve_protocol(None, env), ident.BLOCKS)
+
+    def test_an_explicit_request_wins(self):
+        self.assertEqual(
+            ident.resolve_protocol("kitty", {"KONSOLE_VERSION": "1"}), ident.KITTY
+        )
+
+    def test_detection_never_queries_the_terminal(self):
+        # A hook that waits on a terminal reply hangs the turn if none comes.
+        source = support.IDENTICON.read_text()
+        marker = source.index("def resolve_protocol")
+        body = source[marker:source.index("def iterm2_image")]
+        for forbidden in ("read(", "select", "termios", "tcgetattr"):
+            with self.subTest(forbidden=forbidden):
+                self.assertNotIn(forbidden, body)
 
 
 class TestColourDepthResolution(unittest.TestCase):
