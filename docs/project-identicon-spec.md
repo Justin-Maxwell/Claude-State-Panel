@@ -1,14 +1,15 @@
 # Project identicon specification
 
-**Version 1.**
-
 A deterministic visual identity for a software project, derived from the project
 itself and from nothing else. Any tool implementing this specification produces
 the same identicon for the same project as any other, without coordination,
 configuration, or a shared registry.
 
-This document is normative. `identicon/claude-state-identicon.py` is a reference
-implementation, and `identicon/vectors.json` is the conformance suite.
+The valuable half of this document is **the key** — deciding what identifies a
+project. The other half, how a key becomes a pattern, should come from an
+established identicon implementation rather than from here; the derivation
+below records what the tool does today and is not a standard worth conforming
+to.
 
 ## Why it exists
 
@@ -27,11 +28,9 @@ project's colour would be worse than none of them having one.
 
 ## Scope
 
-**In:** how to derive a key, a pattern, a colour and a set of short names from a
-project. **Out:** where any tool chooses to display the result, and what it does
-with the rest of its interface.
-
-A conforming implementation MUST reproduce `identicon/vectors.json` exactly.
+**In:** how to derive a key, and how a key reaches each medium. **Out:** where
+any tool chooses to display the result, and what it does with the rest of its
+interface.
 
 ## The key
 
@@ -124,11 +123,6 @@ mirrors onto 4 and column 1 onto 3; column 2 is the axis.
 MD5 is used because this is an identity function, not a security one. It must
 be fast, stable, and available everywhere.
 
-### Conformance form
-
-For test vectors, the grid is written as 25 characters of `0` and `1`, row-major
-— row 0 left to right, then row 1, and so on.
-
 ## The colour
 
 ```
@@ -152,9 +146,13 @@ reference language's default would have made this specification quietly
 unportable.
 
 Saturation and lightness are fixed at values that stay legible on both light and
-dark backgrounds. An implementation MAY expose them as parameters, but the
-conformance vectors are defined at the values above, and two tools that vary
-them will not match.
+dark backgrounds.
+
+Note that fixed-lightness HSL clusters perceptually: the hue draw is uniform, but
+equal hue steps are not equally visible, so the green band reads as one colour
+across roughly 50 degrees. A perceptually uniform space would fix it. This is
+one of several reasons to take the pattern and colour from an established
+implementation instead.
 
 ## Derived names
 
@@ -240,24 +238,3 @@ of `truecolor` or `24bit` means 24-bit; otherwise the xterm 256-colour cube,
 Without colour, the grid MUST still be legible, since colour is never allowed to
 be the only channel: use `█` for both rows filled, `▀` for the upper only, `▄`
 for the lower only, and a space for neither.
-
-## Conformance
-
-`identicon/vectors.json` pins the key, grid, hue, RGB, hex, short id and badge
-label for eight inputs, chosen to exercise each key source and the awkward
-shapes — a nested group, a bare path, root, a committed seed, and non-ASCII.
-
-Regenerate with `claude-state-identicon vectors`. The reference implementation's
-test suite checks itself against the committed file, so the specification and the
-code cannot drift apart silently.
-
-## Versioning
-
-The version at the top of this document changes when key resolution, the grid
-rule, or the colour rule changes.
-
-**Any such change changes every identicon.** Every installed icon, every
-generated Konsole profile and every remembered association becomes wrong at
-once. This is not a thing to do casually, and it is why saturation, lightness
-and the digest byte assignments are pinned here rather than left as
-implementation details.

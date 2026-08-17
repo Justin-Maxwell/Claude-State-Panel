@@ -10,7 +10,6 @@ FIXTURE_DIR = REPO_ROOT / "tests" / "fixtures"
 WRITER = REPO_ROOT / "writer" / "claude-state-writer.py"
 EVALUATOR = REPO_ROOT / "evaluator" / "claude-state-eval.py"
 IDENTICON = REPO_ROOT / "identicon" / "claude-state-identicon.py"
-IDENTICON_VECTORS = REPO_ROOT / "identicon" / "vectors.json"
 IDENTICON_SPEC = REPO_ROOT / "docs" / "project-identicon-spec.md"
 
 

@@ -101,8 +101,8 @@ session. They are listed with their tests in `docs/findings.md`.
 
 A deterministic visual identity for a project, derived from the project and
 nothing else, so that independent tools agree without coordinating.
-`docs/project-identicon-spec.md` is the shared contract; `identicon/vectors.json`
-is its conformance suite. Three consumers so far:
+`docs/project-identicon-spec.md` is the shared contract — chiefly the key, which
+is the part that decides whether two tools agree. Three consumers so far:
 
 **On every return of control.** A hook prints the identicon when a turn ends or
 control comes back to you — `Stop`, `PermissionRequest`, `Elicitation`,

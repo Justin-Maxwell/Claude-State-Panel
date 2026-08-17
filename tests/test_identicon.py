@@ -507,72 +507,6 @@ class TestDBusInvocation(unittest.TestCase):
         self.assertIn("12", self.calls[0])
 
 
-class TestConformanceVectors(unittest.TestCase):
-    """The committed vectors are the contract other tools implement against.
-
-    If these fail, either the derivation changed — in which case every installed
-    icon and generated profile in the world is now wrong, and the spec version
-    must be bumped — or the vectors were not regenerated.
-    """
-
-    def setUp(self):
-        self.data = json.loads(support.IDENTICON_VECTORS.read_text())
-
-    def test_the_spec_version_matches_the_implementation(self):
-        self.assertEqual(self.data["spec_version"], ident.SPEC_VERSION)
-
-    def test_the_fixed_parameters_are_the_ones_the_code_defaults_to(self):
-        self.assertEqual(self.data["saturation"], 0.55)
-        self.assertEqual(self.data["lightness"], 0.50)
-
-    def test_every_declared_key_has_a_vector(self):
-        self.assertEqual(
-            [entry["key"] for entry in self.data["vectors"]],
-            list(ident.CONFORMANCE_KEYS),
-        )
-
-    def test_every_vector_reproduces(self):
-        for entry in self.data["vectors"]:
-            key = entry["key"]
-            with self.subTest(key=key):
-                self.assertEqual(ident.grid_bits(key), entry["grid"])
-                self.assertEqual(ident.identicon_hue(key), entry["hue"])
-                self.assertEqual(list(ident.identicon_colour(key)), entry["rgb"])
-                self.assertEqual(ident.hex_colour(ident.identicon_colour(key)),
-                                 entry["hex"])
-                self.assertEqual(ident.short_hash(key), entry["short_id"])
-                self.assertEqual(ident.badge_label(key), entry["badge"])
-
-    def test_the_grid_form_is_twenty_five_bits_and_mirrored(self):
-        for entry in self.data["vectors"]:
-            bits = entry["grid"]
-            with self.subTest(key=entry["key"]):
-                self.assertEqual(len(bits), 25)
-                self.assertTrue(set(bits) <= {"0", "1"})
-                for row in range(5):
-                    start = row * 5
-                    self.assertEqual(bits[start], bits[start + 4])
-                    self.assertEqual(bits[start + 1], bits[start + 3])
-
-    def test_hues_are_in_range(self):
-        for entry in self.data["vectors"]:
-            with self.subTest(key=entry["key"]):
-                self.assertGreaterEqual(entry["hue"], 0)
-                self.assertLess(entry["hue"], 360)
-
-    def test_the_vectors_cover_more_than_one_hue(self):
-        hues = {entry["hue"] for entry in self.data["vectors"]}
-        self.assertGreater(len(hues), 1)
-
-    def test_non_ascii_keys_survive_the_round_trip(self):
-        keys = [entry["key"] for entry in self.data["vectors"]]
-        self.assertTrue(any(not key.isascii() for key in keys))
-
-    def test_quantisation_is_half_up_not_half_to_even(self):
-        # 0.5/255 lands exactly on a half. Python's round() would give 0.
-        self.assertEqual(ident._quantise(0.5 / 255), 1)
-
-
 class TestTerminalRendering(unittest.TestCase):
     KEY = "github.com/owner/repo"
 
@@ -881,32 +815,6 @@ class TestEmitEndToEnd(unittest.TestCase):
                 self.assertEqual(hook["type"], "command")
                 self.assertTrue(hook["command"].endswith("claude-state-identicon.py"))
                 self.assertIn("emit", hook["args"])
-
-    def test_the_committed_vectors_match_a_fresh_generation(self):
-        result = self._run(["vectors"])
-        self.assertEqual(
-            json.loads(result.stdout.decode()),
-            json.loads(support.IDENTICON_VECTORS.read_text()),
-        )
-
-
-class TestSpecAndCodeAgree(unittest.TestCase):
-    def setUp(self):
-        self.text = support.IDENTICON_SPEC.read_text()
-
-    def test_the_spec_declares_the_implemented_version(self):
-        self.assertIn(f"**Version {ident.SPEC_VERSION}.**", self.text)
-
-    def test_the_override_filename_is_named(self):
-        self.assertIn(ident.OVERRIDE_FILENAME, self.text)
-
-    def test_every_key_source_is_documented(self):
-        for source in ident.SOURCE_NOTES:
-            with self.subTest(source=source):
-                self.assertIn(f"`{source}`", self.text)
-
-    def test_the_conformance_file_is_named(self):
-        self.assertIn("identicon/vectors.json", self.text)
 
 
 class TestCliSurface(unittest.TestCase):

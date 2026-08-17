@@ -59,9 +59,6 @@ identicon-emit:
 identicon-hooks:
     {{identicon}} hooks
 
-# Regenerate the conformance vectors after a deliberate spec change
-identicon-vectors:
-    {{identicon}} vectors > identicon/vectors.json
 
 # Install the plasmoid
 install-plasmoid:

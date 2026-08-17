@@ -29,24 +29,6 @@ import subprocess
 import sys
 import zlib
 
-# Bump when the key resolution, the grid, or the colour rule changes. Any bump
-# changes every identicon, so it is not a thing to do casually.
-SPEC_VERSION = 1
-
-# Fixed inputs for the conformance vectors in docs/project-identicon-spec.md.
-# Chosen to exercise each key source and the awkward shapes: a bare host, a
-# nested group, unicode, and the empty-ish edges.
-CONFORMANCE_KEYS = (
-    "github.com/justin-maxwell/claude-state-panel",
-    "github.com/owner/repo",
-    "gitlab.com/group/sub/repo",
-    "codeberg.org/a/b",
-    "/home/justin/Code/Projects/Claude-State-Panel",
-    "/",
-    "project-with-a-committed-seed",
-    "Ünicode/pröject",
-)
-
 # ---------------------------------------------------------------------------
 # Identicon derivation
 #
@@ -259,19 +241,13 @@ def short_hash(key, length=12):
     return hashlib.sha256(key.encode("utf-8")).hexdigest()[:length]
 
 
-def grid_bits(key):
-    """The grid as 25 characters of 0 and 1, row-major. The conformance form."""
-    return "".join(
-        "1" if cell else "0" for row in identicon_grid(key) for cell in row
-    )
-
-
 def icon_name(key):
     """Theme icon name. Konsole's profile Icon= is a theme name, not a path."""
     return f"{ICON_PREFIX}-{short_hash(key)}"
 
 
 def project_name(key):
+    """The last segment of the key, or the whole key if it has no separator."""
     return os.path.basename(key) or key
 
 
@@ -1147,29 +1123,6 @@ def cmd_hooks(args):
     return 0
 
 
-def cmd_vectors(args):
-    """Emit the conformance vectors another implementation can check against."""
-    vectors = {
-        "spec_version": SPEC_VERSION,
-        "saturation": 0.55,
-        "lightness": 0.50,
-        "vectors": [
-            {
-                "key": key,
-                "grid": grid_bits(key),
-                "hue": identicon_hue(key),
-                "rgb": list(identicon_colour(key)),
-                "hex": hex_colour(identicon_colour(key)),
-                "short_id": short_hash(key),
-                "badge": badge_label(key),
-            }
-            for key in CONFORMANCE_KEYS
-        ],
-    }
-    print(json.dumps(vectors, indent=2, ensure_ascii=False))
-    return 0
-
-
 def cmd_doctor(args):
     print(f"qdbus            {find_qdbus() or 'NOT FOUND'}")
     print(f"gdbus            {find_gdbus() or 'NOT FOUND'}")
@@ -1281,10 +1234,6 @@ def build_parser():
     add_common(hooks, path=False)
     hooks.add_argument("--style", choices=STYLES, default="icon")
     hooks.set_defaults(func=cmd_hooks)
-
-    vectors = sub.add_parser("vectors", help="print the conformance vectors as JSON")
-    add_common(vectors, path=False)
-    vectors.set_defaults(func=cmd_vectors)
 
     doctor = sub.add_parser("doctor", help="environment report")
     add_common(doctor, path=False)
