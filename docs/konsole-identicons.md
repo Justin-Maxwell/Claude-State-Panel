@@ -133,9 +133,54 @@ installing a plugin SDK.
 
 ## Identicon derivation
 
-GitHub-style, and pinned by `tests/test_identicon.py` rather than by assertion:
+GitHub-style, and pinned by `tests/test_identicon.py` rather than by assertion.
 
-- Key is the project path, expanded, absolute, trailing separator stripped.
+### The key
+
+The identicon is **always computed**, never stored as an image. What varies is
+the key it is computed from, resolved most specific first:
+
+| Source | Key | Portable |
+|---|---|---|
+| `explicit` | whatever `--key` says | — |
+| `override` | first non-comment line of `.claude-state-identicon` at the repo root | yes, if committed |
+| `remote` | `host/owner/repo` from the git remote | **yes** |
+| `toplevel` | the repository root path, for a repo with no remote | no |
+| `path` | the directory, outside a repository | no |
+
+`show` prints which source was used, because a project silently falling back to
+a path key is the failure mode worth seeing.
+
+**The remote is the right key, and the path is not.** A path is not stable
+across machines, containers, cloud sessions, or — decisively — the per-session
+git worktrees the desktop app creates for parallel sessions. A worktree keeps
+the same `origin` but gets its own top level, so a path-derived key would give
+every parallel session in one project a *different* identicon. That is precisely
+backwards: those sessions share a project, and the panel distinguishes them by
+ordinal instead. See `docs/state-vocabulary.md`.
+
+A session started in a subdirectory has the same problem and the same fix.
+
+Remote URLs are normalised so that every spelling of one repository collapses to
+one key — SSH and HTTPS, with or without `.git`, with or without embedded
+credentials, with or without a port. The host is kept, so `github.com/a/b` and
+`gitlab.com/a/b` stay distinct. A local-path remote is refused, since it is no
+more portable than the working directory.
+
+### Compute, or store?
+
+Compute. Storage cannot be the primary source: an identicon has to exist for
+every session, including ones in repositories you have never touched and could
+not commit to. Anything stored can only ever be an override.
+
+The override that does exist is `.claude-state-identicon` at the repository top
+level, holding a **seed string, not an image**. Sizes, themes and formats stay
+generated, so a stored seed cannot drift from what the renderer produces.
+Committing it makes a project's identicon travel with the repository; leaving it
+uncommitted keeps it local. Both work, and neither is required.
+
+### The pattern
+
 - `md5(key)`. Bytes 0–14 fill the left three columns of a 5×5 grid, one byte per
   cell, filled when even. Columns 0 and 1 mirror onto 4 and 3, so every
   identicon is vertically symmetric.

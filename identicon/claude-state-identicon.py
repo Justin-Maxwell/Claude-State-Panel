@@ -40,17 +40,152 @@ GRID = 5
 ICON_PREFIX = "claude-state-identicon"
 INSTALL_SIZES = (16, 22, 24, 32, 48, 64, 128, 256)
 
+# An optional one-line seed at the repository top level, overriding the derived
+# key. Committing it makes a project's identicon travel with the repository.
+OVERRIDE_FILENAME = ".claude-state-identicon"
+
 
 def normalise_key(path):
-    """Reduce a project path to the string everything else is derived from.
+    """Reduce a filesystem path to a stable string.
 
     Expanded, made absolute, and stripped of any trailing separator, so that
-    `~/src/foo`, `~/src/foo/` and a relative path to the same place all yield
-    one identicon.
+    `~/src/foo`, `~/src/foo/` and a relative path to the same place all agree.
+
+    This is the *fallback* key. Prefer resolve_key, which reaches the repository
+    identity first — a path is not stable across machines, containers, or the
+    per-session git worktrees the desktop app creates.
     """
     expanded = os.path.expanduser(str(path))
     absolute = os.path.abspath(expanded)
     return absolute.rstrip(os.sep) or os.sep
+
+
+def normalise_remote_url(url):
+    """Reduce a git remote URL to `host/owner/repo`, lowercased.
+
+    Every way of naming one repository must collapse to one key, so an SSH
+    checkout and an HTTPS checkout of the same project share an identicon:
+
+        git@github.com:Owner/Repo.git
+        https://github.com/Owner/Repo.git
+        https://token@github.com/Owner/Repo
+        ssh://git@github.com:2222/Owner/Repo.git   ->  github.com/owner/repo
+
+    The host is kept, so `github.com/a/b` and `gitlab.com/a/b` stay distinct.
+    Returns None for a local-path remote, which is no more portable than the
+    working directory and so earns no special treatment.
+    """
+    if not url:
+        return None
+    url = url.strip().rstrip("/")
+    if not url or url.startswith("/") or url.startswith("file://"):
+        return None
+
+    if "://" in url:
+        scheme, _, rest = url.partition("://")
+        if scheme.lower() == "file":
+            return None
+        authority, _, path = rest.partition("/")
+    elif ":" in url:
+        # scp-like: [user@]host:path
+        authority, _, path = url.partition(":")
+    else:
+        return None
+
+    if "@" in authority:
+        authority = authority.rpartition("@")[2]
+    host = authority.partition(":")[0]  # drop any port
+
+    path = path.strip("/")
+    if path.lower().endswith(".git"):
+        path = path[: -len(".git")]
+
+    parts = [part for part in path.split("/") if part]
+    if not host or not parts:
+        return None
+    return "/".join([host] + parts).lower()
+
+
+def _git(args, cwd):
+    """Run a git command, returning stripped stdout or None if it fails."""
+    try:
+        completed = subprocess.run(
+            ["git", "-C", str(cwd), *args], capture_output=True, text=True
+        )
+    except OSError:
+        return None
+    if completed.returncode != 0:
+        return None
+    return completed.stdout.strip() or None
+
+
+def repo_toplevel(path):
+    """The working tree root, or None outside a repository.
+
+    In a worktree this is the worktree's own root, not the main checkout — which
+    is exactly why it is not the key.
+    """
+    return _git(["rev-parse", "--show-toplevel"], path)
+
+
+def repo_remote_url(path):
+    """The origin URL, falling back to whichever remote is listed first."""
+    url = _git(["remote", "get-url", "origin"], path)
+    if url:
+        return url
+    remotes = _git(["remote"], path)
+    if not remotes:
+        return None
+    return _git(["remote", "get-url", remotes.splitlines()[0].strip()], path)
+
+
+def override_key(directory):
+    """The committed seed at `directory`, if there is a usable one."""
+    if not directory:
+        return None
+    candidate = pathlib.Path(directory) / OVERRIDE_FILENAME
+    try:
+        text = candidate.read_text()
+    except (OSError, UnicodeDecodeError):
+        return None
+    for line in text.splitlines():
+        line = line.strip()
+        if line and not line.startswith("#"):
+            return line
+    return None
+
+
+def resolve_key(path=None, explicit=None):
+    """Return (key, source) for a project directory.
+
+    Precedence, most specific first:
+
+      explicit   given on the command line
+      override   a committed .claude-state-identicon at the repository root
+      remote     host/owner/repo from the git remote -- the portable one
+      toplevel   the repository root path, for a repository with no remote
+      path       the directory itself, outside a repository
+
+    Only `remote` and `override` survive being cloned somewhere else. The two
+    path-shaped sources are honest fallbacks, not equivalents.
+    """
+    directory = normalise_key(path if path else os.getcwd())
+    if explicit:
+        return explicit, "explicit"
+
+    toplevel = repo_toplevel(directory)
+
+    committed = override_key(toplevel or directory)
+    if committed:
+        return committed, "override"
+
+    if toplevel:
+        remote = normalise_remote_url(repo_remote_url(directory))
+        if remote:
+            return remote, "remote"
+        return normalise_key(toplevel), "toplevel"
+
+    return directory, "path"
 
 
 def _digest(key):
@@ -443,8 +578,12 @@ def resolve_session(spec=None):
 # ---------------------------------------------------------------------------
 
 
+def _resolve_from_args(args):
+    return resolve_key(getattr(args, "path", None), getattr(args, "key", None))
+
+
 def _key_from_args(args):
-    return normalise_key(args.path if args.path else os.getcwd())
+    return _resolve_from_args(args)[0]
 
 
 def _render_kwargs(args):
@@ -461,9 +600,19 @@ def _render_kwargs(args):
     }
 
 
+SOURCE_NOTES = {
+    "explicit": "given on the command line",
+    "override": f"committed {OVERRIDE_FILENAME}",
+    "remote": "git remote, portable across checkouts",
+    "toplevel": "repository root path, no remote to use",
+    "path": "not a repository, so the path is all there is",
+}
+
+
 def cmd_show(args):
-    key = _key_from_args(args)
-    print(f"path      {key}")
+    key, source = _resolve_from_args(args)
+    print(f"key       {key}")
+    print(f"source    {source}  ({SOURCE_NOTES[source]})")
     print(f"project   {project_name(key)}")
     print(f"icon      {icon_name(key)}")
     print(f"profile   {profile_name(key)}")
@@ -682,6 +831,9 @@ def build_parser():
     def add_common(target, *, path=True, render=False, session=False):
         if path:
             target.add_argument("path", nargs="?", help="project path (default: cwd)")
+            target.add_argument("--key", help="override the derived key outright")
+        else:
+            target.set_defaults(key=None)
         if render:
             target.add_argument("--saturation", type=float, default=0.55)
             target.add_argument("--lightness", type=float, default=0.50)
@@ -757,6 +909,11 @@ def main(argv=None):
     except DBusError as error:
         print(f"error: {error}", file=sys.stderr)
         return 1
+    except BrokenPipeError:
+        # Piping into head closes the pipe early. Retarget stdout at devnull so
+        # the interpreter's own flush at exit does not report it a second time.
+        os.dup2(os.open(os.devnull, os.O_WRONLY), sys.stdout.fileno())
+        return 0
 
 
 if __name__ == "__main__":

@@ -149,10 +149,23 @@ the derived project hue may be a computed colour, it applies only to the project
 rule, and it never encodes state. Everything else stays a theme role.
 
 The derivation is the one already shipped in
-`identicon/claude-state-identicon.py` — md5 of the absolute path, digest byte 15
-for the hue. Sharing it means a Konsole tab and a panel glyph agree on a
-project's colour without either knowing about the other. Factoring the two to a
-single implementation is Phase 1 work; the rule is that they must not drift.
+`identicon/claude-state-identicon.py` — digest byte 15 of the project key for
+the hue. Sharing it means a Konsole tab and a panel glyph agree on a project's
+colour without either knowing about the other. Factoring the two to a single
+implementation is Phase 1 work; the rule is that they must not drift.
+
+**The key is the git remote, not the path** — `host/owner/repo`, normalised.
+This matters here more than it does for Konsole. The desktop app gives each
+parallel session its own git worktree, so a path-derived hue would paint every
+session in a project a different colour, at exactly the moment the ordinals are
+telling you they are the same project. The two features would contradict each
+other on screen.
+
+Sessions outside a repository, or in one with no remote, fall back to a path key
+and so get a hue that is stable on this machine but nowhere else. That is
+acceptable — the hue is an aid, not an identifier — but `doctor` should surface
+which source a session used, since a project unexpectedly on a path key will
+change colour when checked out elsewhere.
 
 ## What the evaluator must emit
 

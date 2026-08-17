@@ -48,6 +48,28 @@ vocabulary in `docs/state-vocabulary.md`; 14 decides whether *top level* is
 something to detect or something automatic, and 15 could force a glyph
 substitution.
 
+## I. A git worktree keeps `origin` but gets its own top level
+
+- **Assumed:** the identicon keyed on the project path, on the reasoning that a
+  path identifies a project well enough.
+- **Observed:** `git remote get-url origin` returns the same URL from a worktree
+  as from the main checkout, while `git rev-parse --show-toplevel` returns the
+  worktree's own root. A session started in a subdirectory reports the
+  repository root, not the subdirectory. So the remote is invariant across every
+  checkout of one project and the path is invariant across none of them.
+- **Test:** created a worktree of this repository and compared both commands;
+  reproduced as `tests/test_identicon.py`, `TestKeyResolution`.
+- **Date:** 2026-08-17
+- **Consequence:** the key is now the normalised remote, `host/owner/repo`, with
+  path-shaped keys kept only as fallbacks. This is not a preference. The desktop
+  app puts each parallel session in its own worktree, so a path key would have
+  given every parallel session in one project a different identicon and a
+  different project hue — directly contradicting the ordinals, which exist to
+  say those sessions *are* one project. Two features would have disagreed on
+  screen. Identicons remain computed, never stored as images; the committed
+  `.claude-state-identicon` seed is an override only, because an identicon must
+  exist for repositories that carry no such file.
+
 ## H. Kirigami exposes nine text colour roles, not four
 
 - **Assumed:** spec §5.3 maps seven states onto four roles —

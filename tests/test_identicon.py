@@ -9,6 +9,7 @@ kept honest.
 import os
 import pathlib
 import struct
+import subprocess
 import tempfile
 import unittest
 import zlib
@@ -41,6 +42,156 @@ class TestKeyNormalisation(unittest.TestCase):
 
     def test_home_is_expanded(self):
         self.assertFalse(ident.normalise_key("~/x").startswith("~"))
+
+
+class TestRemoteUrlNormalisation(unittest.TestCase):
+    """Every way of naming one repository must collapse to one key."""
+
+    EQUIVALENT = [
+        "https://github.com/Owner/Repo.git",
+        "https://github.com/Owner/Repo",
+        "https://github.com/owner/repo/",
+        "https://token@github.com/Owner/Repo.git",
+        "https://user:pass@github.com/Owner/Repo.git",
+        "git@github.com:Owner/Repo.git",
+        "git@github.com:Owner/Repo",
+        "ssh://git@github.com/Owner/Repo.git",
+        "ssh://git@github.com:2222/Owner/Repo.git",
+        "git://github.com/Owner/Repo.git",
+    ]
+
+    def test_all_spellings_agree(self):
+        for url in self.EQUIVALENT:
+            with self.subTest(url=url):
+                self.assertEqual(
+                    ident.normalise_remote_url(url), "github.com/owner/repo"
+                )
+
+    def test_the_host_is_kept_so_forges_stay_distinct(self):
+        self.assertNotEqual(
+            ident.normalise_remote_url("https://github.com/a/b"),
+            ident.normalise_remote_url("https://gitlab.com/a/b"),
+        )
+
+    def test_nested_groups_survive(self):
+        self.assertEqual(
+            ident.normalise_remote_url("https://gitlab.com/Group/Sub/Repo.git"),
+            "gitlab.com/group/sub/repo",
+        )
+
+    def test_a_repo_named_git_is_not_truncated(self):
+        self.assertEqual(
+            ident.normalise_remote_url("https://github.com/owner/git.git"),
+            "github.com/owner/git",
+        )
+
+    def test_local_remotes_are_refused(self):
+        # No more portable than the working directory, so no special treatment.
+        for url in ("/srv/git/repo.git", "file:///srv/git/repo.git", "", None):
+            with self.subTest(url=url):
+                self.assertIsNone(ident.normalise_remote_url(url))
+
+    def test_a_url_with_no_path_is_refused(self):
+        self.assertIsNone(ident.normalise_remote_url("https://github.com"))
+
+
+class TestKeyResolution(unittest.TestCase):
+    """Built on real repositories, because the whole point is git's behaviour."""
+
+    def setUp(self):
+        self.tmp = tempfile.TemporaryDirectory()
+        self.root = pathlib.Path(self.tmp.name)
+        self.addCleanup(self.tmp.cleanup)
+        self.env = dict(os.environ, GIT_CONFIG_GLOBAL="/dev/null",
+                        GIT_CONFIG_SYSTEM="/dev/null")
+
+    def _git(self, *args, cwd):
+        subprocess.run(["git", "-C", str(cwd), *args], check=True,
+                       capture_output=True, text=True, env=self.env)
+
+    def _repo(self, name, remote=None):
+        path = self.root / name
+        path.mkdir(parents=True)
+        self._git("init", "-q", "-b", "main", cwd=path)
+        self._git("config", "user.email", "t@example.invalid", cwd=path)
+        self._git("config", "user.name", "Test", cwd=path)
+        (path / "README").write_text("x\n")
+        self._git("add", "-A", cwd=path)
+        self._git("commit", "-qm", "init", cwd=path)
+        if remote:
+            self._git("remote", "add", "origin", remote, cwd=path)
+        return path
+
+    def test_a_repo_with_a_remote_keys_on_the_remote(self):
+        path = self._repo("proj", "git@github.com:Owner/Repo.git")
+        self.assertEqual(ident.resolve_key(path), ("github.com/owner/repo", "remote"))
+
+    def test_a_subdirectory_gets_the_same_key_as_the_root(self):
+        path = self._repo("proj", "https://github.com/Owner/Repo.git")
+        (path / "docs").mkdir()
+        self.assertEqual(ident.resolve_key(path / "docs"), ident.resolve_key(path))
+
+    def test_a_worktree_gets_the_same_key_as_the_main_checkout(self):
+        # This is the case that decides it. The desktop app puts each parallel
+        # session in its own worktree, so a path-derived key would give every
+        # session in one project a different identicon.
+        path = self._repo("proj", "https://github.com/Owner/Repo.git")
+        tree = self.root / "wt"
+        # Detached, because git refuses to check out a branch that another
+        # worktree already holds.
+        self._git("worktree", "add", "-q", "--detach", str(tree), cwd=path)
+        self.assertNotEqual(ident.repo_toplevel(tree), ident.repo_toplevel(path))
+        self.assertEqual(ident.resolve_key(tree), ident.resolve_key(path))
+
+    def test_two_clones_at_different_paths_agree(self):
+        one = self._repo("clone-a", "https://github.com/Owner/Repo.git")
+        two = self._repo("clone-b", "git@github.com:Owner/Repo.git")
+        self.assertEqual(ident.resolve_key(one)[0], ident.resolve_key(two)[0])
+
+    def test_a_repo_with_no_remote_falls_back_to_its_root(self):
+        path = self._repo("local-only")
+        key, source = ident.resolve_key(path)
+        self.assertEqual(source, "toplevel")
+        self.assertEqual(key, ident.normalise_key(path))
+
+    def test_a_non_repository_falls_back_to_the_path(self):
+        plain = self.root / "plain"
+        plain.mkdir()
+        key, source = ident.resolve_key(plain)
+        self.assertEqual(source, "path")
+        self.assertEqual(key, ident.normalise_key(plain))
+
+    def test_a_committed_override_beats_the_remote(self):
+        path = self._repo("proj", "https://github.com/Owner/Repo.git")
+        (path / ident.OVERRIDE_FILENAME).write_text("my-chosen-seed\n")
+        self.assertEqual(ident.resolve_key(path), ("my-chosen-seed", "override"))
+
+    def test_an_override_at_the_root_applies_in_a_subdirectory(self):
+        path = self._repo("proj", "https://github.com/Owner/Repo.git")
+        (path / ident.OVERRIDE_FILENAME).write_text("my-chosen-seed\n")
+        (path / "docs").mkdir()
+        self.assertEqual(ident.resolve_key(path / "docs")[0], "my-chosen-seed")
+
+    def test_an_override_ignores_comments_and_blank_lines(self):
+        path = self._repo("proj", "https://github.com/Owner/Repo.git")
+        (path / ident.OVERRIDE_FILENAME).write_text("# why\n\n  seed  \n")
+        self.assertEqual(ident.resolve_key(path)[0], "seed")
+
+    def test_an_empty_override_is_ignored_rather_than_obeyed(self):
+        path = self._repo("proj", "https://github.com/Owner/Repo.git")
+        (path / ident.OVERRIDE_FILENAME).write_text("# only a comment\n")
+        self.assertEqual(ident.resolve_key(path)[1], "remote")
+
+    def test_an_explicit_key_beats_everything(self):
+        path = self._repo("proj", "https://github.com/Owner/Repo.git")
+        (path / ident.OVERRIDE_FILENAME).write_text("committed\n")
+        self.assertEqual(ident.resolve_key(path, explicit="cli"), ("cli", "explicit"))
+
+    def test_every_source_has_a_note_for_the_show_command(self):
+        self.assertEqual(
+            sorted(ident.SOURCE_NOTES),
+            ["explicit", "override", "path", "remote", "toplevel"],
+        )
 
 
 class TestGrid(unittest.TestCase):
