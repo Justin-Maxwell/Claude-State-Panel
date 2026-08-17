@@ -47,6 +47,33 @@ Phase 2 must not begin with any Phase 0 item unresolved.
 
 ## Resolved
 
+## V. `systemMessage` is plain text, so no hook can put an image in the chat
+
+- **Assumed:** that a hook's `systemMessage` is rendered as markdown, so a
+  `data:image/png` URI would appear as an image. The whole turn-end identicon
+  was built on this: PNG size chosen against a rendered bracket, 30x30 pinned by
+  test, the payload committed as base64, the hook reduced to a `printf`.
+- **Observed:** the hook fires and the client prints, literally,
+  `Stop says: ![](data:image/png;base64,iVBOR...)`. No markdown, no image, and
+  the event name is prefixed to the message.
+- **Test:** registered the committed `.claude/settings.json` hook in a live
+  Claude Desktop session, 2026-08-17.
+- **Date:** 2026-08-17
+- **Consequence:** the design premise is gone. The docs never promised markdown
+  -- `systemMessage` is described only as "warning message shown to the user" --
+  and re-reading them afterwards confirms **no hook output field can display an
+  image**; `terminalSequence` is the only rich channel and it emits terminal
+  control sequences, which reach Konsole and not a GUI chat client. So the
+  identicon can be delivered at turn end as *text*, or through the terminal
+  route the Konsole work already has, or not at all. Every image Justin has seen
+  in this chat arrived in an assistant message, which is a channel a hook cannot
+  reach.
+- **Two things worth keeping from it.** Project-level `.claude/settings.json`
+  *is* honoured by Claude Desktop, and it took effect on an already-running
+  session without a restart -- finding A holds on this surface too. And the
+  committed-artifact plumbing is unaffected: only the payload's *format* was
+  wrong, not where it lives or how it is pinned.
+
 <!-- Findings Q to U arrived on the Konsole identicon branch, which forked before
      E to I were taken and lettered its own five E, F, G, H, I. Re-lettered here
      rather than on that branch, so its own history stays readable. -->
