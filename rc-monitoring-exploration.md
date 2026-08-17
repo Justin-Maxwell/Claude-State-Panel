@@ -236,8 +236,32 @@ below is **observed**, not read from docs. The install is
   never carried more than six keys: `cwd`, `kind`, `name`, `pid`, `sessionId`,
   `startedAt`. The absence is **structural, not transient**. See [§11.8](#118-the-mechanism)
   for why.
-- `just doctor` therefore renders **"1 session, none waiting on you"** while two
-  interactive sessions are open and one of them is this one.
+- `just doctor` therefore renders **"1 session, none waiting on you"** — and the
+  session it shows is the wrong one. Enumerating what was actually live:
+
+  | reported | what it is | transcript on disk | shown by `doctor`? |
+  |---|---|---|---|
+  | `a8d5f7b2` | konsole tab, bare `claude`, **never typed into** | **none, anywhere** | **yes — slot 0** |
+  | `9fd7ede6` | daemon-spawned background agent | **none, anywhere** | no |
+  | `4e1db5ed` | **Desktop session — this one** | yes | **no** |
+  | `cca0e8d4` | **Desktop session — Sentry-MCP** | yes | **no** |
+
+- So the panel shows the one session **nobody is using**, and hides **both sessions
+  that have a human in them**. Corrected 2026-08-17 after Justin pointed out there
+  was only ever one console tab and nothing had been typed into it — an earlier draft
+  of this section miscounted the Desktop sessions as CLI ones.
+
+- **Second regression, exposed by the same table.** The 2026-08-16 ruling — *a glyph
+  appears when Justin first types into a session, not when the session opens* — is
+  **not implemented** in the CLI-backed evaluator. `a8d5f7b2` has never received a
+  prompt, has no transcript anywhere under `~/.claude/projects/`, and still takes a
+  slot. That rule lived in the hook-based writer, which Phase 1 deleted;
+  `claude agents --json` reports a session from the moment the process exists. The
+  ruling was recorded as satisfied "without detecting anything" — it is now satisfied
+  by nothing at all.
+- Absence of a transcript is, incidentally, a **clean and cheap test for
+  never-typed-into**, and it is the same `inotify` watch [T1](#51-t1--jsonl-transcript-tail)
+  already needs.
 - Cause: `reportable()` in `evaluator/claude-state-eval.py:129` gates on
   `session.get("status") is not None`. That gate exists to keep a headless
   `claude -p` from claiming a slot — `kind` could not do it. **A Desktop session is
@@ -295,8 +319,11 @@ below is **observed**, not read from docs. The install is
   `list_sessions`, `get_session`, `list_events`, `search_session_transcripts`.
   `get_session` is documented to return model, worktree/branch, **and whether the
   session is remote** — three §6 rows, first-party.
-- `list_sessions` from this session returned **"No other sessions found"** while two
-  CLI sessions and a background agent were live. It enumerates **CCD sessions only**.
+- `list_sessions` enumerates **CCD sessions only**, and excludes the caller. First
+  call returned "No other sessions found" — which proved nothing, because no *other*
+  Desktop session existed yet. Re-run once `cca0e8d4` (Desktop, Sentry-MCP) was live,
+  it returned exactly that one session and still ignored the konsole session and the
+  background agent. **That** is the evidence; the first reading was under-supported.
 - It is an MCP tool surface, not a process a widget can query. **Not a panel
   substrate.** Its value is as *ground truth* for validating T1 coverage — the role
   §5.4 wanted T4 for, at none of the risk.
@@ -338,26 +365,32 @@ sessions, gives a clean split with no exceptions:
 | session | invocation | ancestry | `status` |
 |---|---|---|---|
 | `a8d5f7b2` | `claude` | `konsole` | `idle` |
-| `9fd7ede6` | `… --session-id … --permission-mode auto` | `konsole` (via daemon) | `idle` |
+| `9fd7ede6` | `… --session-id … --permission-mode auto` | daemon, under `konsole` | `idle` |
 | `4e1db5ed` | `… --output-format stream-json --input-format stream-json --permission-prompt-tool stdio …` | `claude-desktop` | **absent** |
 | `cca0e8d4` | *(identical to above)* | `claude-desktop` | **absent** |
 
 - The desktop app does not host a Claude Code *session*. It spawns Claude Code as an
   **SDK subprocess in headless stream-json mode** and drives it over stdio.
-- **`status` is published by the interactive TUI.** A stream-json process has no TUI,
-  so it publishes nothing. That is the whole of it.
+- The discriminating property is **stream-json mode**, not the presence of a terminal.
+  `9fd7ede6` is a daemon-hosted background agent with no TUI of its own and it
+  publishes `status` normally. So the rule the evidence supports is: **a session
+  launched in stream-json/SDK mode does not register a status; every other launch
+  does.** An earlier draft said "`status` is published by the TUI" — that overreaches,
+  and the background agent is the counter-example.
 - → The `status is not None` gate was never testing *"is a human present"*. It was
-  testing *"does this session run the TUI"* — a flawless proxy for the former, right
-  up until a GUI began driving headless sessions. It is not a bug being discovered;
-  it is a proxy that expired.
+  testing *"was this launched as an ordinary session rather than an SDK stream"* — a
+  flawless proxy for the former, right up until a GUI began driving headless sessions.
+  It is not a bug being discovered; it is a proxy that expired.
 - → **`--permission-prompt-tool stdio`** is the sharpest edge. A Desktop permission
   prompt is answered *inside the desktop app over stdio*. It is never published to the
   registry, so `waitingFor` cannot appear for a Desktop session **even in principle**.
   The panel's headline capability — *"is anything waiting on you"* — is unreachable
   from `claude agents --json` for this surface. Not delayed, not lossy: absent.
-- → The real split is **not** CLI-vs-Desktop. It is **TUI-hosted vs SDK-driven**. VS
-  Code is near-certainly SDK-driven too (P11). Two of the three surfaces §9 wanted
-  parity across likely fall on the wrong side of it. `[6%|6%|4%]`
+- → The real split is **not** CLI-vs-Desktop. It is **ordinary launch vs stream-json
+  launch**. VS Code is near-certainly stream-json too (P11). Two of the three surfaces
+  §9 wanted parity across likely fall on the wrong side of it. `[6%|6%|4%]`
+- → P11 is now **cheap and decisive**: open a VS Code session and check for the
+  `--output-format stream-json` flag in its cmdline. No drive, no matrix.
 
 **Unwelcome consequence, stated plainly.** The README's central claim — *"There is no
 writer and no state file… `claude agents --json` reports the state directly"* — is
