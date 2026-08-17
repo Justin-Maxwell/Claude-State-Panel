@@ -81,5 +81,60 @@ class TestRenderedSizeIsPinned(unittest.TestCase):
         self.assertEqual("", result.stdout.strip())
 
 
+class TestTheBakedConstant(unittest.TestCase):
+    """`.claude/settings.json` carries the identicon as a literal.
+
+    The identicon is a constant for a repository, so deriving it every turn --
+    a process, a module import and two git calls, 68ms measured -- reproduces a
+    string that cannot change. The literal costs one printf, 2.3ms measured.
+
+    A stored derivation is only safe if something checks it, which is the same
+    bargain `identicon/vectors.json` makes. These tests are that check: if the
+    reference is ever bumped, or the key rule changes, the committed literal
+    goes stale and this fails rather than the panel and the chat quietly
+    disagreeing.
+    """
+
+    SETTINGS = support.REPO_ROOT / ".claude" / "settings.json"
+
+    def hook_command(self):
+        settings = json.loads(self.SETTINGS.read_text())
+        entries = settings["hooks"]["Stop"]
+        self.assertEqual(1, len(entries), "one Stop hook, or the icon prints twice")
+        handlers = entries[0]["hooks"]
+        self.assertEqual(1, len(handlers))
+        return handlers[0]
+
+    def test_the_hook_runs_no_interpreter_and_no_script(self):
+        """The whole point. If this ever grows a path to a script again, the
+        constant is being recomputed and the 68ms is back."""
+        command = self.hook_command()
+        self.assertEqual("command", command["type"])
+        self.assertTrue(command["command"].startswith("printf %s "),
+                        f"expected a literal printf, got {command['command'][:40]!r}")
+        for forbidden in ("python", ".py", "identicon", "git ", "|", "&&", "$("):
+            self.assertNotIn(forbidden, command["command"].split("printf %s ")[0] + " ",
+                             "the command must derive nothing")
+
+    def test_the_baked_literal_is_still_correct(self):
+        emitted = subprocess.run(
+            ["sh", "-c", self.hook_command()["command"]],
+            capture_output=True, text=True, timeout=30,
+        )
+        self.assertEqual(0, emitted.returncode, emitted.stderr)
+        self.assertEqual(json.loads(emit().stdout), json.loads(emitted.stdout),
+                         "the committed literal has drifted from the derivation; "
+                         "regenerate with: probe/turn-identicon.py --settings")
+
+    def test_the_generator_reproduces_the_committed_file(self):
+        generated = subprocess.run(
+            ["python3", str(HOOK), "--settings"],
+            capture_output=True, text=True, timeout=30, cwd=str(support.REPO_ROOT),
+        )
+        self.assertEqual(0, generated.returncode, generated.stderr)
+        self.assertEqual(json.loads(self.SETTINGS.read_text()),
+                         json.loads(generated.stdout))
+
+
 if __name__ == "__main__":
     unittest.main()
