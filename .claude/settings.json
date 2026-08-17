@@ -5,7 +5,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "cat ${CLAUDE_PROJECT_DIR}/.claude/identicon.json"
+            "command": "printf '{\"systemMessage\":\"![](data:image/png;base64,%s)\"}' \"$(base64 < ${CLAUDE_PROJECT_DIR}/.identicon.png | tr -d '\\n')\""
           }
         ]
       }

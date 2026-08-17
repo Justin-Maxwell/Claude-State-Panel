@@ -67,13 +67,27 @@ def message_for(cwd):
     return f"![](data:image/png;base64,{base64.b64encode(png).decode('ascii')})"
 
 
-PAYLOAD_NAME = "identicon.json"
-HOOK_COMMAND = "cat ${CLAUDE_PROJECT_DIR}/.claude/" + PAYLOAD_NAME
+ICON_NAME = ".identicon.png"
+
+# `base64 ... | tr -d '\n'` rather than GNU's `base64 -w0`, which BSD and macOS
+# do not have. Costs 4.9ms against 3.1ms; the committed file is cloned to
+# machines this one knows nothing about, so portability wins the 1.8ms.
+HOOK_COMMAND = (
+    """printf '{"systemMessage":"![](data:image/png;base64,%s)"}' """
+    """"$(base64 < ${CLAUDE_PROJECT_DIR}/""" + ICON_NAME + """ | tr -d '\\n')\""""
+)
 
 
 def payload_for(cwd):
     """The hook's entire stdout: the finished `systemMessage`, ready to print."""
     return json.dumps({"systemMessage": message_for(cwd)}, separators=(",", ":"))
+
+
+def icon_for(cwd):
+    """The identicon PNG itself -- the artifact that gets committed."""
+    module = _identicon()
+    key, _source = module.resolve_key(cwd)
+    return module.render_png(key, SIZE)
 
 
 def settings_fragment():
@@ -84,19 +98,24 @@ def settings_fragment():
     reproduce a string that cannot change is work for its own sake. Reading the
     finished string costs 2.4ms, and nothing can go wrong in between.
 
-    The payload is a *separate file*, not a literal in here. `settings.json` is
-    hand-edited configuration; a 219-character base64 blob inside it makes every
-    diff unreadable and invites someone to break the icon while editing an
-    unrelated hook. Split, the config never changes when the icon does.
+    What is stored is the *image*, at `.identicon.png` in the repository root,
+    and the hook base64s it on the way out. Two reasons it is not a ready-made
+    payload file. A 219-character blob inside `settings.json` makes every diff
+    unreadable and invites breaking the icon while editing an unrelated hook.
+    And an identicon identifies the *repository*, not this tool's use of it --
+    it belongs where Konsole, a README badge or anything else can pick it up,
+    not filed under `.claude/` as though Claude Code owned it. The hook lives in
+    `.claude/` because a Claude Code hook genuinely is Claude Code's business;
+    the identifier does not.
 
     `${CLAUDE_PROJECT_DIR}` rather than a relative path: hook commands resolve
     relative paths against the working directory, and the working directory can
     change mid-session. The placeholder is documented as surviving that.
 
-    This belongs in the *project's* `.claude/`, not the user's -- there is no
-    global place a per-repository constant could live, and a user-level hook
-    would have to rederive the key every turn just to learn which repository it
-    was in, which is the entire cost being removed.
+    The hook is per-project because there is no global place a per-repository
+    constant could live, and a user-level hook would have to rederive the key
+    every turn just to learn which repository it was in, which is the entire
+    cost being removed.
 
     It survives cloning, because the key is the git remote rather than a path
     (finding Q). The committed files are correct in every checkout of this
@@ -110,19 +129,22 @@ def settings_fragment():
 
 
 def install(cwd):
-    """Write both files under `<cwd>/.claude/`. Returns the paths written."""
-    target = os.path.join(cwd, ".claude")
-    os.makedirs(target, exist_ok=True)
+    """Write the icon and the hook. Returns the paths written.
 
-    settings_path = os.path.join(target, "settings.json")
-    payload_path = os.path.join(target, PAYLOAD_NAME)
+    The icon goes to the repository root; the hook goes under `.claude/`,
+    because only the second of the two is Claude Code's concern.
+    """
+    icon_path = os.path.join(cwd, ICON_NAME)
+    with open(icon_path, "wb") as handle:
+        handle.write(icon_for(cwd))
 
+    claude = os.path.join(cwd, ".claude")
+    os.makedirs(claude, exist_ok=True)
+    settings_path = os.path.join(claude, "settings.json")
     with open(settings_path, "w", encoding="utf-8") as handle:
         handle.write(json.dumps(settings_fragment(), indent=2) + "\n")
-    with open(payload_path, "w", encoding="utf-8") as handle:
-        handle.write(payload_for(cwd) + "\n")
 
-    return settings_path, payload_path
+    return icon_path, settings_path
 
 
 def main():
@@ -131,6 +153,9 @@ def main():
         return 0
     if "--payload" in sys.argv:
         print(payload_for(os.getcwd()))
+        return 0
+    if "--icon" in sys.argv:
+        sys.stdout.buffer.write(icon_for(os.getcwd()))
         return 0
     if "--install" in sys.argv:
         for path in install(os.getcwd()):
@@ -162,7 +187,11 @@ if __name__ == "__main__":
 # To register this in another repository:
 #
 #   cd /path/to/that/repo
-#   /path/to/probe/turn-identicon.py --settings > .claude/settings.json
+#   /path/to/probe/turn-identicon.py --install
+#
+# Writes .identicon.png at the root and .claude/settings.json. The icon is the
+# repository's, and belongs to the repository; only the hook belongs to Claude
+# Code, and only the hook is filed under .claude/.
 #
 # Project-level, deliberately. There is no global place a per-repository
 # constant could live, and a user-level hook would have to rederive the key on
