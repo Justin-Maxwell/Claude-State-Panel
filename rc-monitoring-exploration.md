@@ -230,9 +230,12 @@ below is **observed**, not read from docs. The install is
 
 - `claude agents --json` **does** report the Desktop session: `kind: "interactive"`,
   correct `pid`, `cwd`, `sessionId`, `name`.
-- It reports **no `status` field at all**, across three polls while the session was
-  demonstrably busy. The sibling CLI session reported `status: "idle"` in the same
-  poll. *(Idle-state observation outstanding — sampler running.)*
+- It reports **no `status` field at all** — the key is absent, not null — in **40
+  consecutive samples over 3 minutes**, spanning both busy and fully-idle periods.
+  The sibling CLI session reported `status: "idle"` in all 40. The Desktop entry
+  never carried more than six keys: `cwd`, `kind`, `name`, `pid`, `sessionId`,
+  `startedAt`. The absence is **structural, not transient**. See [§11.8](#118-the-mechanism)
+  for why.
 - `just doctor` therefore renders **"1 session, none waiting on you"** while two
   interactive sessions are open and one of them is this one.
 - Cause: `reportable()` in `evaluator/claude-state-eval.py:129` gates on
@@ -306,25 +309,64 @@ below is **observed**, not read from docs. The install is
 - **Phase 3 is now partial by construction.** Konsole D-Bus tab focus cannot act on
   a Desktop session. Click-to-focus needs a per-surface action, chosen from the
   ancestry chain — which §11.2 shows is already recorded.
-- **Version skew is a standing hazard.** `claude agents --json` is a research-preview
-  schema and there are now two versions of it on one machine. The `status`-absence in
-  §11.1 may be a 2.1.229-vs-2.1.233 artefact rather than a Desktop one. **Distinguish
-  these before fixing anything** — run `agents --json` from *both* binaries.
+- **Version skew is eliminated as an explanation.** P7 run: `agents --json` from the
+  2.1.233 CLI binary and the 2.1.229 Desktop binary return **byte-identical shapes**
+  for the same four sessions. The reader does not matter. The absence is a property
+  of the *observed session*, not the *observing binary*.
 - **Do not "fix" §11.1 by dropping the `status` gate.** That would readmit headless
-  `claude -p` sessions and undo the 2026-08-14 ruling. The discriminator has to move
-  to something that actually separates the two — ancestry (`claude-desktop` present)
-  is the obvious candidate and is already captured.
+  `claude -p` and undo the 2026-08-14 ruling. And per [§11.8](#118-the-mechanism) it
+  would not help anyway: admitting the session yields one you can name and locate but
+  whose state is **structurally unavailable from this substrate**.
 
 ### 11.7 Probe additions
 
-- **P7** — `agents --json` from the 2.1.229 binary and the 2.1.233 binary against the
-  same session set. Isolates version skew from surface. **Do this before any code.**
-- **P8** — capture one Desktop session through every row of [§6](#6-capability-parity-checklist),
-  especially *blocked on permission* and *blocked on question*: does `status`/`waitingFor`
-  ever appear for Desktop, or is the field absent for the whole lifecycle?
+- **P7** — ~~both binaries~~ **done, §11.6.** Skew eliminated.
+- **P8** — drive a Desktop session through every row of [§6](#6-capability-parity-checklist).
+  Given §11.8 the expected answer is *nothing appears*; the probe is to confirm that
+  and to find what the transcript shows instead.
 - **P9** — characterise `queue-operation` records. Latency vs. UI state change.
 - **P10** — `ccd_session_mgmt.get_session` on a live session as the §6 ground-truth
   column in P3's truth table, replacing the gated [P5](#75-p5---ccr-ground-truth-optional-gated).
+- **P11** — repeat §11.8's correlation on the **VS Code extension**. If it is also
+  SDK-driven, the split below is the general rule and not a Desktop quirk.
+
+### 11.8 The mechanism
+
+Correlating `status` presence against process invocation, across all four live
+sessions, gives a clean split with no exceptions:
+
+| session | invocation | ancestry | `status` |
+|---|---|---|---|
+| `a8d5f7b2` | `claude` | `konsole` | `idle` |
+| `9fd7ede6` | `… --session-id … --permission-mode auto` | `konsole` (via daemon) | `idle` |
+| `4e1db5ed` | `… --output-format stream-json --input-format stream-json --permission-prompt-tool stdio …` | `claude-desktop` | **absent** |
+| `cca0e8d4` | *(identical to above)* | `claude-desktop` | **absent** |
+
+- The desktop app does not host a Claude Code *session*. It spawns Claude Code as an
+  **SDK subprocess in headless stream-json mode** and drives it over stdio.
+- **`status` is published by the interactive TUI.** A stream-json process has no TUI,
+  so it publishes nothing. That is the whole of it.
+- → The `status is not None` gate was never testing *"is a human present"*. It was
+  testing *"does this session run the TUI"* — a flawless proxy for the former, right
+  up until a GUI began driving headless sessions. It is not a bug being discovered;
+  it is a proxy that expired.
+- → **`--permission-prompt-tool stdio`** is the sharpest edge. A Desktop permission
+  prompt is answered *inside the desktop app over stdio*. It is never published to the
+  registry, so `waitingFor` cannot appear for a Desktop session **even in principle**.
+  The panel's headline capability — *"is anything waiting on you"* — is unreachable
+  from `claude agents --json` for this surface. Not delayed, not lossy: absent.
+- → The real split is **not** CLI-vs-Desktop. It is **TUI-hosted vs SDK-driven**. VS
+  Code is near-certainly SDK-driven too (P11). Two of the three surfaces §9 wanted
+  parity across likely fall on the wrong side of it. `[6%|6%|4%]`
+
+**Unwelcome consequence, stated plainly.** The README's central claim — *"There is no
+writer and no state file… `claude agents --json` reports the state directly"* — is
+now **surface-specific**. It holds for TUI sessions and fails for SDK-driven ones.
+For Desktop, state must be *inferred from event edges* again, from hooks
+([confirmed firing](#112-the-second-interactivity-heuristic-is-wrong-too)) or the
+transcript. That is precisely the writer, the state file, and the three classes of bug
+Phase 1 deleted — returning for one surface only. There is no way to like this; the
+choice is which surface to serve and how honestly to say so.
 
 ---
 
