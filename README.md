@@ -250,42 +250,76 @@ Full write-up, with the upstream evidence for every claim, in
 
 ## Identicons
 
-**The convention is GitHub's, as reverse-engineered by the community. It is not
-a specification GitHub publishes, and it is not any third-party library.**
+**Today's derivation is original and conforms to nothing. That is a known
+defect, not a design.** The normative reference is being adopted; see below.
 
-That distinction matters enough to write down. GitHub has never published an
-identicon algorithm; what circulates is reverse-engineering, and the projects
-that document it say so — [kashav/identicon](https://github.com/kashav/identicon)
-describes itself as "Reverse-engineering GitHub's avatar generation algorithm".
-So there is no upstream to track, no version to pin, and nothing to be
-compatible *with*. Our own `docs/project-identicon-spec.md` is the only
-authority this repository has, and it is normative here.
+### Where the current code came from
 
-What that convention gives us, and why it was worth following: MD5, a 5×5 grid,
-one cell per digest byte by parity, filled from the centre column outward and
-mirrored left to right. Chosen because it is strongly associated with code
-already — a developer reading a panel recognises the shape language without
-being taught it — and because it has been rendered at avatar size by a great
-many implementations, so its spread over a 5×5 mirrored grid is well exercised.
+Nowhere. It was written on the Konsole identicon branch in the *style* of a
+GitHub identicon — MD5, a 5×5 grid, parity per cell, mirrored — without being a
+port of any implementation. That branch built conformance vectors, then deleted
+them, and said why:
 
-Deliberate divergences from the reverse-engineered description, recorded so
-nobody later mistakes them for bugs:
+> Pinning vectors for a derivation I invented proved only that the code agrees
+> with itself… they should come from an established identicon implementation
+> instead.
 
-| | community description | here |
+"GitHub-style as commonly described" is not a specification. Descriptions differ
+on the details that decide the picture, so any two implementations following
+"the community" produce different images from one key — which is exactly how
+this repository ended up with two disagreeing derivations in the first place.
+
+### The reference being adopted
+
+[dgraham/identicon](https://github.com/dgraham/identicon) — "A port of GitHub's
+identicon algorithm to Rust". **MIT**, 139 stars, still maintained.
+
+Chosen over the JavaScript ports on two grounds that need no aesthetic
+judgement: it carries a licence, and it has been used enough to have been
+checked by someone other than its author. The closest JS equivalent,
+`memo/github-identicon`, has **no licence file** — all rights reserved — and
+zero stars, which makes it unusable under `NOTICE`'s policy regardless of merit.
+
+Its algorithm, read from source and stated here so the spec is checkable:
+
+- **MD5** of the input, 16 bytes
+- nibbles taken **high then low** per byte, in order
+- grid filled **column 2, then 1, then 0** — centre outward — five rows each,
+  15 nibbles consumed, painting `nibble % 2 == 0`, mirroring column *n* to
+  column *4 − n*
+- hue from a **12-bit** value: `((byte[12] & 0x0f) << 8) | byte[13]`, mapped
+  0–4095 onto 0–360°
+- saturation `65 − (byte[14] × 20 ÷ 255)` percent, lightness
+  `75 − (byte[15] × 20 ÷ 255)` percent
+- background `#f0f0f0`
+
+### What must change to conform
+
+| | dgraham/identicon | here today |
 |---|---|---|
-| digest | MD5 | MD5 |
-| grid unit | 15 nibbles | 15 **bytes** |
-| fill test | parity, even is foreground | parity, even is foreground |
-| order | centre column outward, mirrored | same |
-| colour | last 7 nibbles, S from a 65% band | one byte for hue, S and L fixed |
-| key | GitHub user id | `host/owner/repo` from the git remote |
+| digest | MD5 | MD5 ✓ |
+| grid unit | 15 **nibbles** | 15 **bytes** ✗ |
+| fill test | `nibble % 2 == 0` | `byte % 2 == 0` ✗ |
+| column order | 2, 1, 0 — centre outward | 0, 1, 2 — outward in ✗ |
+| hue | 12 bits, `byte[12..13]` | 8 bits, `byte[15]` ✗ |
+| saturation | derived, 45–65% | fixed 55% ✗ |
+| lightness | derived, 55–75% | fixed 50% ✗ |
+| background | `#f0f0f0` | transparent — **deliberate**, the panel and the
+  chat both sit on unknown backgrounds |
 
-The key is the largest divergence and the deliberate one. GitHub identicons are
-keyed on a *user*; ours are keyed on a *repository*, so the same project cloned
-to a different path — or into one of the per-session worktrees the desktop app
-creates — is one identity. Finding Q. A consequence worth knowing: two checkouts
-of one repository share an identicon, and the popup's label disambiguator is
-what separates them on screen.
+### The one deliberate divergence that stays
+
+**The key.** GitHub identicons are keyed on a *user id*; ours are keyed on a
+*repository* — `host/owner/repo` from the git remote — so the same project
+cloned to a different path, or into one of the per-session worktrees the desktop
+app creates, is one identity. Finding Q. A consequence worth knowing: two
+checkouts of one repository share an identicon, and the popup's label
+disambiguator is what separates them on screen.
+
+Because the key differs, our output will never match GitHub's for any real user,
+and no test can assert that it does. What conformance buys is that the
+*derivation* is someone else's, executable, and pinned — so "the identicon is
+wrong" becomes a question with an answer.
 
 MD5 is appropriate precisely because no security property is claimed. This is a
 visual hash. Nothing authenticates against it and nothing is protected by it.
