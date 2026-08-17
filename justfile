@@ -51,6 +51,18 @@ identicon-uninstall:
 identicon-doctor:
     {{identicon}} doctor
 
+# Print the identicon as it appears on a return of control
+identicon-emit:
+    {{identicon}} emit
+
+# Print the hook registration to paste into ~/.claude/settings.json
+identicon-hooks:
+    {{identicon}} hooks
+
+# Regenerate the conformance vectors after a deliberate spec change
+identicon-vectors:
+    {{identicon}} vectors > identicon/vectors.json
+
 # Install the plasmoid
 install-plasmoid:
     kpackagetool6 --type Plasma/Applet --install plasmoid/

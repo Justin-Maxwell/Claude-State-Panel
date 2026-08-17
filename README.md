@@ -97,12 +97,38 @@ Three open questions need scenarios only a human can trigger — an
 `AskUserQuestion` answered, an Esc interrupt left for 90s, and a non-interactive
 session. They are listed with their tests in `docs/findings.md`.
 
-## Konsole project identicons
+## Project identicons
 
-Adjacent to the panel, not a phase of it. The panel answers *is anything waiting
-on me*; this answers *which project is this tab*. A GitHub-style identicon is
-derived from the tab's working directory and applied over Konsole's session
-D-Bus interface, by two routes that need no compilation:
+A deterministic visual identity for a project, derived from the project and
+nothing else, so that independent tools agree without coordinating.
+`docs/project-identicon-spec.md` is the shared contract; `identicon/vectors.json`
+is its conformance suite. Three consumers so far:
+
+**On every return of control.** A hook prints the identicon when a turn ends or
+control comes back to you — `Stop`, `PermissionRequest`, `Elicitation`,
+`SessionEnd`. Five characters by three, in colour, beside the project name.
+`Notification` is left out on purpose: `idle_prompt` fires exactly 60s after
+`Stop`, so registering both would print the same mark twice a minute apart.
+
+```
+just identicon-emit     # see it
+just identicon-hooks    # the registration to paste, checked against the probe first
+```
+
+**In the panel**, as the project hue channel beneath each state glyph. See
+`docs/state-vocabulary.md`.
+
+**On a Konsole tab**, by the two compile-free routes below.
+
+The key is the **git remote**, normalised to `host/owner/repo` — not the working
+directory, because the desktop app gives each parallel session its own git
+worktree and a path key would give each of them a different identity.
+
+### Konsole
+
+The panel answers *is anything waiting on me*; a Konsole tab marker answers
+*which project is this tab*. Applied over Konsole's session D-Bus interface, by
+two routes that need no compilation:
 
 - **badge** — a coloured one or two character label over the terminal view.
 - **profile** — a generated profile carrying an `Icon=`, giving a real tab-bar

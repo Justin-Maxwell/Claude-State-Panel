@@ -19,6 +19,7 @@ Standard library only. Every subprocess is invoked with an argument list.
 import argparse
 import colorsys
 import hashlib
+import json
 import os
 import pathlib
 import shutil
@@ -26,6 +27,24 @@ import struct
 import subprocess
 import sys
 import zlib
+
+# Bump when the key resolution, the grid, or the colour rule changes. Any bump
+# changes every identicon, so it is not a thing to do casually.
+SPEC_VERSION = 1
+
+# Fixed inputs for the conformance vectors in docs/project-identicon-spec.md.
+# Chosen to exercise each key source and the awkward shapes: a bare host, a
+# nested group, unicode, and the empty-ish edges.
+CONFORMANCE_KEYS = (
+    "github.com/justin-maxwell/claude-state-panel",
+    "github.com/owner/repo",
+    "gitlab.com/group/sub/repo",
+    "codeberg.org/a/b",
+    "/home/justin/Code/Projects/Claude-State-Panel",
+    "/",
+    "project-with-a-committed-seed",
+    "Ünicode/pröject",
+)
 
 # ---------------------------------------------------------------------------
 # Identicon derivation
@@ -204,15 +223,31 @@ def identicon_grid(key):
     return grid
 
 
-def identicon_colour(key, saturation=0.55, lightness=0.50):
-    """Return the foreground colour as an (r, g, b) triple of 0-255 ints.
+def identicon_hue(key):
+    """Hue in degrees, from the one digest byte the grid does not consume.
 
-    Hue comes from the one digest byte the grid does not consume, so the colour
-    and the pattern cannot drift apart.
+    Taking it from the same digest means the colour and the pattern cannot
+    drift apart.
     """
-    hue = _digest(key)[15] * 360 // 256
-    red, green, blue = colorsys.hls_to_rgb(hue / 360.0, lightness, saturation)
-    return (round(red * 255), round(green * 255), round(blue * 255))
+    return _digest(key)[15] * 360 // 256
+
+
+def _quantise(value):
+    """Round half up, not half to even.
+
+    Specified this way because the spec has to be reimplementable in languages
+    whose native rounding is half up. Python's round() is half to even, so
+    following it would have made the spec quietly unportable.
+    """
+    return int(value * 255 + 0.5)
+
+
+def identicon_colour(key, saturation=0.55, lightness=0.50):
+    """Return the foreground colour as an (r, g, b) triple of 0-255 ints."""
+    red, green, blue = colorsys.hls_to_rgb(
+        identicon_hue(key) / 360.0, lightness, saturation
+    )
+    return (_quantise(red), _quantise(green), _quantise(blue))
 
 
 def hex_colour(rgb):
@@ -221,6 +256,13 @@ def hex_colour(rgb):
 
 def short_hash(key, length=12):
     return hashlib.sha256(key.encode("utf-8")).hexdigest()[:length]
+
+
+def grid_bits(key):
+    """The grid as 25 characters of 0 and 1, row-major. The conformance form."""
+    return "".join(
+        "1" if cell else "0" for row in identicon_grid(key) for cell in row
+    )
 
 
 def icon_name(key):
@@ -375,6 +417,113 @@ def render_ansi(key):
             line += f"\033[48;2;{red};{green};{blue}m  \033[0m" if filled else "  "
         lines.append(line)
     return "\n".join(lines)
+
+
+# --- Terminal colour --------------------------------------------------------
+
+TRUECOLOR = "truecolor"
+INDEXED = "256"
+NONE = "none"
+COLOUR_DEPTHS = (TRUECOLOR, INDEXED, NONE)
+
+
+def resolve_colour_depth(requested=None, environ=None):
+    """Pick a colour depth. NO_COLOR wins over everything, per no-color.org."""
+    environ = os.environ if environ is None else environ
+    if environ.get("NO_COLOR") is not None:
+        return NONE
+    if requested and requested != "auto":
+        return requested
+    if environ.get("COLORTERM", "").lower() in ("truecolor", "24bit"):
+        return TRUECOLOR
+    return INDEXED
+
+
+def _xterm256(rgb):
+    """Nearest colour in the xterm 6x6x6 cube."""
+    red, green, blue = (int(component * 5 / 255 + 0.5) for component in rgb)
+    return 16 + 36 * red + 6 * green + blue
+
+
+def _fg(rgb, depth):
+    if depth == NONE:
+        return ""
+    if depth == TRUECOLOR:
+        return "\033[38;2;{};{};{}m".format(*rgb)
+    return f"\033[38;5;{_xterm256(rgb)}m"
+
+
+def _bg(rgb, depth):
+    if depth == NONE:
+        return ""
+    if depth == TRUECOLOR:
+        return "\033[48;2;{};{};{}m".format(*rgb)
+    return f"\033[48;5;{_xterm256(rgb)}m"
+
+
+DEFAULT_FG = "\033[39m"
+DEFAULT_BG = "\033[49m"
+RESET = "\033[0m"
+
+# Cell aspect is roughly one to two, so packing two grid rows into one text row
+# with an upper half block makes the identicon come out square.
+HALF_BLOCK = "▀"
+FILLED_BLOCK = "█"
+
+
+def render_half_blocks(key, depth=TRUECOLOR, saturation=0.55, lightness=0.50):
+    """The identicon as three text rows of five characters.
+
+    Compact enough to print on every return of control without taking the
+    terminal over: two grid rows per text row, the fifth row paired with blank.
+    """
+    grid = identicon_grid(key)
+    colour = identicon_colour(key, saturation, lightness)
+    lines = []
+    for text_row in range(3):
+        line = ""
+        for column in range(GRID):
+            top = grid[text_row * 2][column]
+            bottom_row = text_row * 2 + 1
+            bottom = grid[bottom_row][column] if bottom_row < GRID else False
+            if depth == NONE:
+                line += FILLED_BLOCK if top and bottom else HALF_BLOCK if top else "▄" if bottom else " "
+                continue
+            line += (_fg(colour, depth) if top else DEFAULT_FG)
+            line += (_bg(colour, depth) if bottom else DEFAULT_BG)
+            line += HALF_BLOCK
+        lines.append(line + (RESET if depth != NONE else ""))
+    return lines
+
+
+def render_banner(key, source=None, depth=TRUECOLOR, **kwargs):
+    """The compact identicon with the project name beside it."""
+    rows = render_half_blocks(key, depth, **kwargs)
+    colour = identicon_colour(key, kwargs.get("saturation", 0.55),
+                              kwargs.get("lightness", 0.50))
+    name = project_name(key)
+    if depth != NONE:
+        name = f"{_fg(colour, depth)}{name}{RESET}"
+    labels = [name, key if source != "path" else "", ""]
+    return [f"{row}  {label}".rstrip() for row, label in zip(rows, labels)]
+
+
+def render_line(key, depth=TRUECOLOR, **kwargs):
+    """One line: the colour, then the project name. For the tightest prompts."""
+    colour = identicon_colour(key, kwargs.get("saturation", 0.55),
+                              kwargs.get("lightness", 0.50))
+    mark = FILLED_BLOCK
+    if depth != NONE:
+        mark = f"{_fg(colour, depth)}{FILLED_BLOCK}{RESET}"
+    return [f"{mark} {project_name(key)}"]
+
+
+STYLES = {
+    "banner": render_banner,
+    "compact": lambda key, source=None, depth=TRUECOLOR, **kw: render_half_blocks(key, depth, **kw),
+    "line": lambda key, source=None, depth=TRUECOLOR, **kw: render_line(key, depth, **kw),
+    "full": lambda key, source=None, depth=TRUECOLOR, **kw: render_ansi(key).splitlines(),
+}
 
 
 # ---------------------------------------------------------------------------
@@ -803,6 +952,121 @@ def cmd_demo(args):
     return 0
 
 
+# Hook events at which control comes back to the human. Notification is left
+# out deliberately: idle_prompt fires exactly 60s after Stop, so registering it
+# would print the same identicon twice, a minute apart.
+RETURN_OF_CONTROL_EVENTS = ("Stop", "PermissionRequest", "Elicitation", "SessionEnd")
+
+
+def payload_cwd(stream):
+    """The cwd from a hook payload on stdin, or None.
+
+    Every hook payload carries cwd, session_id and hook_event_name — the probe
+    confirmed that across 27 records. Nothing else here is read, and in
+    particular nothing that could carry prompt or tool text.
+    """
+    try:
+        payload = json.load(stream)
+    except (ValueError, OSError, UnicodeDecodeError):
+        return None
+    if not isinstance(payload, dict):
+        return None
+    cwd = payload.get("cwd")
+    return cwd if isinstance(cwd, str) and cwd else None
+
+
+def open_output():
+    """The controlling terminal if there is one, else stdout.
+
+    A hook's stdout is not reliably shown, and for some events it is fed back to
+    the model instead. The terminal is where a return-of-control marker belongs,
+    so go there directly when it exists.
+    """
+    try:
+        return open("/dev/tty", "w"), True
+    except OSError:
+        return sys.stdout, False
+
+
+def cmd_emit(args):
+    """Print the identicon. Intended for a return-of-control hook.
+
+    Exits 0 whatever happens. A hook that fails must not disturb the session,
+    and a missing identicon is not worth a broken turn.
+    """
+    try:
+        path = args.path
+        if not path and not sys.stdin.isatty():
+            path = payload_cwd(sys.stdin)
+        key, source = resolve_key(path, args.key)
+
+        depth = resolve_colour_depth(args.colour)
+        renderer = STYLES[args.style]
+        lines = renderer(key, source=source, depth=depth,
+                         saturation=args.saturation, lightness=args.lightness)
+
+        stream, is_tty = open_output()
+        try:
+            for line in lines:
+                stream.write(line + "\n")
+            stream.flush()
+        finally:
+            if is_tty:
+                stream.close()
+    except Exception:  # noqa: BLE001 - a hook must never break the session
+        pass
+    return 0
+
+
+def cmd_hooks(args):
+    """Print the registration to paste into settings, rather than writing it.
+
+    Deliberately not self-installing. The Phase 0 probe is registered on these
+    same events right now, and silently editing settings from here could not be
+    tested against a running Claude Code.
+    """
+    command = str(pathlib.Path(__file__).resolve())
+    entry = {
+        "hooks": [{
+            "type": "command",
+            "command": command,
+            "args": ["emit", "--style", args.style],
+        }]
+    }
+    print(json.dumps({event: [entry] for event in RETURN_OF_CONTROL_EVENTS}, indent=2))
+    print()
+    print("Merge into the hooks object in ~/.claude/settings.json.")
+    print("Notification is omitted on purpose: idle_prompt fires 60s after Stop,")
+    print("so registering both prints the same identicon twice.")
+    print()
+    print("The Phase 0 probe is registered on these events too. Check for a")
+    print("collision before adding these, per the README.")
+    return 0
+
+
+def cmd_vectors(args):
+    """Emit the conformance vectors another implementation can check against."""
+    vectors = {
+        "spec_version": SPEC_VERSION,
+        "saturation": 0.55,
+        "lightness": 0.50,
+        "vectors": [
+            {
+                "key": key,
+                "grid": grid_bits(key),
+                "hue": identicon_hue(key),
+                "rgb": list(identicon_colour(key)),
+                "hex": hex_colour(identicon_colour(key)),
+                "short_id": short_hash(key),
+                "badge": badge_label(key),
+            }
+            for key in CONFORMANCE_KEYS
+        ],
+    }
+    print(json.dumps(vectors, indent=2, ensure_ascii=False))
+    return 0
+
+
 def cmd_doctor(args):
     print(f"qdbus            {find_qdbus() or 'NOT FOUND'}")
     print(f"gdbus            {find_gdbus() or 'NOT FOUND'}")
@@ -894,6 +1158,26 @@ def build_parser():
     demo.add_argument("--label", default=None)
     demo.add_argument("--parent", default="FALLBACK/")
     demo.set_defaults(func=cmd_demo, clear=False, apply=True)
+
+    emit = sub.add_parser(
+        "emit",
+        help="print the identicon; for a return-of-control hook",
+        description="Reads a hook payload on stdin and uses its cwd. Writes to "
+                    "the controlling terminal when there is one. Always exits 0.",
+    )
+    add_common(emit, render=True)
+    emit.add_argument("--style", choices=sorted(STYLES), default="banner")
+    emit.add_argument("--colour", choices=("auto", *COLOUR_DEPTHS), default="auto")
+    emit.set_defaults(func=cmd_emit)
+
+    hooks = sub.add_parser("hooks", help="print the hook registration to paste")
+    add_common(hooks, path=False)
+    hooks.add_argument("--style", choices=sorted(STYLES), default="banner")
+    hooks.set_defaults(func=cmd_hooks)
+
+    vectors = sub.add_parser("vectors", help="print the conformance vectors as JSON")
+    add_common(vectors, path=False)
+    vectors.set_defaults(func=cmd_vectors)
 
     doctor = sub.add_parser("doctor", help="environment report")
     add_common(doctor, path=False)

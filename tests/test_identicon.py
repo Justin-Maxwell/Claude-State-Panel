@@ -6,10 +6,13 @@ is also how the "argument list, never a composed shell string" invariant is
 kept honest.
 """
 
+import io
+import json
 import os
 import pathlib
 import struct
 import subprocess
+import sys
 import tempfile
 import unittest
 import zlib
@@ -501,6 +504,285 @@ class TestDBusInvocation(unittest.TestCase):
         ident.dbus_call("org.kde.konsole-1", "/Sessions/1", "setBadgeFontSize",
                         [12], qdbus="/usr/bin/qdbus6")
         self.assertIn("12", self.calls[0])
+
+
+class TestConformanceVectors(unittest.TestCase):
+    """The committed vectors are the contract other tools implement against.
+
+    If these fail, either the derivation changed — in which case every installed
+    icon and generated profile in the world is now wrong, and the spec version
+    must be bumped — or the vectors were not regenerated.
+    """
+
+    def setUp(self):
+        self.data = json.loads(support.IDENTICON_VECTORS.read_text())
+
+    def test_the_spec_version_matches_the_implementation(self):
+        self.assertEqual(self.data["spec_version"], ident.SPEC_VERSION)
+
+    def test_the_fixed_parameters_are_the_ones_the_code_defaults_to(self):
+        self.assertEqual(self.data["saturation"], 0.55)
+        self.assertEqual(self.data["lightness"], 0.50)
+
+    def test_every_declared_key_has_a_vector(self):
+        self.assertEqual(
+            [entry["key"] for entry in self.data["vectors"]],
+            list(ident.CONFORMANCE_KEYS),
+        )
+
+    def test_every_vector_reproduces(self):
+        for entry in self.data["vectors"]:
+            key = entry["key"]
+            with self.subTest(key=key):
+                self.assertEqual(ident.grid_bits(key), entry["grid"])
+                self.assertEqual(ident.identicon_hue(key), entry["hue"])
+                self.assertEqual(list(ident.identicon_colour(key)), entry["rgb"])
+                self.assertEqual(ident.hex_colour(ident.identicon_colour(key)),
+                                 entry["hex"])
+                self.assertEqual(ident.short_hash(key), entry["short_id"])
+                self.assertEqual(ident.badge_label(key), entry["badge"])
+
+    def test_the_grid_form_is_twenty_five_bits_and_mirrored(self):
+        for entry in self.data["vectors"]:
+            bits = entry["grid"]
+            with self.subTest(key=entry["key"]):
+                self.assertEqual(len(bits), 25)
+                self.assertTrue(set(bits) <= {"0", "1"})
+                for row in range(5):
+                    start = row * 5
+                    self.assertEqual(bits[start], bits[start + 4])
+                    self.assertEqual(bits[start + 1], bits[start + 3])
+
+    def test_hues_are_in_range(self):
+        for entry in self.data["vectors"]:
+            with self.subTest(key=entry["key"]):
+                self.assertGreaterEqual(entry["hue"], 0)
+                self.assertLess(entry["hue"], 360)
+
+    def test_the_vectors_cover_more_than_one_hue(self):
+        hues = {entry["hue"] for entry in self.data["vectors"]}
+        self.assertGreater(len(hues), 1)
+
+    def test_non_ascii_keys_survive_the_round_trip(self):
+        keys = [entry["key"] for entry in self.data["vectors"]]
+        self.assertTrue(any(not key.isascii() for key in keys))
+
+    def test_quantisation_is_half_up_not_half_to_even(self):
+        # 0.5/255 lands exactly on a half. Python's round() would give 0.
+        self.assertEqual(ident._quantise(0.5 / 255), 1)
+
+
+class TestTerminalRendering(unittest.TestCase):
+    KEY = "github.com/owner/repo"
+
+    def test_compact_form_is_five_wide_by_three_tall(self):
+        rows = ident.render_half_blocks(self.KEY, ident.NONE)
+        self.assertEqual(len(rows), 3)
+        for row in rows:
+            self.assertEqual(len(row), 5)
+
+    def test_uncoloured_output_carries_no_escape_sequences(self):
+        for row in ident.render_half_blocks(self.KEY, ident.NONE):
+            self.assertNotIn("\033", row)
+
+    def test_uncoloured_output_is_still_legible(self):
+        # Colour is never the only channel, so the pattern must survive without
+        # it. Every character must distinguish which of the two rows are set.
+        glyphs = set("".join(ident.render_half_blocks(self.KEY, ident.NONE)))
+        self.assertTrue(glyphs <= {"█", "▀", "▄", " "})
+
+    def test_uncoloured_output_matches_the_grid(self):
+        grid = ident.identicon_grid(self.KEY)
+        rows = ident.render_half_blocks(self.KEY, ident.NONE)
+        for text_row, row in enumerate(rows):
+            for column, char in enumerate(row):
+                top = grid[text_row * 2][column]
+                lower_index = text_row * 2 + 1
+                bottom = grid[lower_index][column] if lower_index < 5 else False
+                expected = {(True, True): "█", (True, False): "▀",
+                            (False, True): "▄", (False, False): " "}[(top, bottom)]
+                with self.subTest(row=text_row, column=column):
+                    self.assertEqual(char, expected)
+
+    def test_truecolor_and_indexed_differ(self):
+        true_rows = ident.render_half_blocks(self.KEY, ident.TRUECOLOR)
+        indexed = ident.render_half_blocks(self.KEY, ident.INDEXED)
+        self.assertIn("38;2;", "".join(true_rows))
+        self.assertIn("38;5;", "".join(indexed))
+
+    def test_every_coloured_row_resets(self):
+        for depth in (ident.TRUECOLOR, ident.INDEXED):
+            for row in ident.render_half_blocks(self.KEY, depth):
+                with self.subTest(depth=depth):
+                    self.assertTrue(row.endswith(ident.RESET))
+
+    def test_every_style_produces_lines(self):
+        for name, renderer in ident.STYLES.items():
+            with self.subTest(style=name):
+                lines = renderer(self.KEY, source="remote", depth=ident.NONE,
+                                 saturation=0.55, lightness=0.5)
+                self.assertTrue(lines)
+                for line in lines:
+                    self.assertNotIn("\n", line)
+
+    def test_the_banner_names_the_project(self):
+        lines = ident.render_banner(self.KEY, source="remote", depth=ident.NONE)
+        self.assertIn("repo", lines[0])
+
+    def test_the_banner_hides_a_path_key_rather_than_printing_it(self):
+        lines = ident.render_banner("/home/j/thing", source="path", depth=ident.NONE)
+        self.assertNotIn("/home/j/thing", "".join(lines))
+
+
+class TestColourDepthResolution(unittest.TestCase):
+    def test_no_color_beats_everything(self):
+        env = {"NO_COLOR": "1", "COLORTERM": "truecolor"}
+        self.assertEqual(ident.resolve_colour_depth("truecolor", env), ident.NONE)
+
+    def test_no_color_counts_even_when_empty(self):
+        # no-color.org: presence is the signal, not the value.
+        self.assertEqual(ident.resolve_colour_depth(None, {"NO_COLOR": ""}), ident.NONE)
+
+    def test_colorterm_selects_truecolor(self):
+        for value in ("truecolor", "24bit", "TrueColor"):
+            with self.subTest(value=value):
+                self.assertEqual(
+                    ident.resolve_colour_depth(None, {"COLORTERM": value}),
+                    ident.TRUECOLOR,
+                )
+
+    def test_the_fallback_is_indexed_not_none(self):
+        self.assertEqual(ident.resolve_colour_depth(None, {}), ident.INDEXED)
+
+    def test_an_explicit_request_is_honoured(self):
+        self.assertEqual(ident.resolve_colour_depth("none", {}), ident.NONE)
+
+    def test_xterm_cube_endpoints(self):
+        self.assertEqual(ident._xterm256((0, 0, 0)), 16)
+        self.assertEqual(ident._xterm256((255, 255, 255)), 231)
+
+
+class TestEmitReadsHookPayloads(unittest.TestCase):
+    """Driven by the real fixtures, since that is what a hook will send."""
+
+    RETURN_OF_CONTROL_FIXTURES = ("stop", "permission_request", "elicitation",
+                                  "session_end")
+
+    def test_the_events_it_claims_are_the_ones_it_should_claim(self):
+        self.assertEqual(
+            sorted(ident.RETURN_OF_CONTROL_EVENTS),
+            ["Elicitation", "PermissionRequest", "SessionEnd", "Stop"],
+        )
+
+    def test_notification_is_deliberately_excluded(self):
+        # idle_prompt fires exactly 60s after Stop, finding D, so registering it
+        # too would print the same identicon twice a minute apart.
+        self.assertNotIn("Notification", ident.RETURN_OF_CONTROL_EVENTS)
+
+    def test_every_claimed_event_has_a_fixture(self):
+        stems = {stem for stem, _ in support.all_fixtures()}
+        for name in self.RETURN_OF_CONTROL_FIXTURES:
+            with self.subTest(fixture=name):
+                self.assertIn(name, stems)
+
+    def test_cwd_is_read_from_each_return_of_control_payload(self):
+        for name in self.RETURN_OF_CONTROL_FIXTURES:
+            payload = support.load(name)
+            with self.subTest(fixture=name):
+                self.assertEqual(
+                    ident.payload_cwd(io.StringIO(json.dumps(payload))),
+                    payload["cwd"],
+                )
+
+    def test_all_of_them_yield_the_same_identicon(self):
+        # Same project, so the marker must not change with the reason control
+        # came back.
+        keys = {ident.resolve_key(support.load(name)["cwd"])[0]
+                for name in self.RETURN_OF_CONTROL_FIXTURES}
+        self.assertEqual(len(keys), 1)
+
+    def test_nothing_but_cwd_is_read_from_the_payload(self):
+        # The fixtures plant sentinels precisely so this can be asserted.
+        for name in self.RETURN_OF_CONTROL_FIXTURES:
+            payload = support.load(name)
+            cwd = ident.payload_cwd(io.StringIO(json.dumps(payload)))
+            for sentinel in support.SENTINELS:
+                with self.subTest(fixture=name, sentinel=sentinel):
+                    self.assertNotIn(sentinel, cwd)
+
+    def test_malformed_input_yields_none_rather_than_raising(self):
+        for text in ("", "not json", "[]", "null", '"a string"', "{}",
+                     '{"cwd": null}', '{"cwd": ""}', '{"cwd": 7}'):
+            with self.subTest(text=text):
+                self.assertIsNone(ident.payload_cwd(io.StringIO(text)))
+
+
+class TestEmitEndToEnd(unittest.TestCase):
+    """A hook that breaks the session is worse than no identicon at all."""
+
+    def _run(self, args, stdin=b"", env=None):
+        return subprocess.run(
+            [sys.executable, str(support.IDENTICON), *args],
+            input=stdin, capture_output=True,
+            env=dict(os.environ, **(env or {})),
+        )
+
+    def test_a_stop_payload_produces_output(self):
+        payload = support.FIXTURE_DIR.joinpath("stop.json").read_bytes()
+        result = self._run(["emit", "--colour", "none"], stdin=payload)
+        self.assertEqual(result.returncode, 0)
+        self.assertTrue(result.stdout.strip())
+
+    def test_it_exits_zero_on_garbage_input(self):
+        result = self._run(["emit", "--colour", "none"], stdin=b"\x00 not json at all")
+        self.assertEqual(result.returncode, 0)
+
+    def test_it_exits_zero_with_no_input_at_all(self):
+        self.assertEqual(self._run(["emit", "--colour", "none"]).returncode, 0)
+
+    def test_no_color_in_the_environment_is_honoured(self):
+        payload = support.FIXTURE_DIR.joinpath("stop.json").read_bytes()
+        result = self._run(["emit"], stdin=payload, env={"NO_COLOR": "1"})
+        self.assertNotIn(b"\033", result.stdout)
+
+    def test_the_hook_registration_is_valid_json_naming_this_script(self):
+        result = self._run(["hooks"])
+        self.assertEqual(result.returncode, 0)
+        body = result.stdout.decode().split("\n\n", 1)[0]
+        registration = json.loads(body)
+        self.assertEqual(sorted(registration), sorted(ident.RETURN_OF_CONTROL_EVENTS))
+        for event, entries in registration.items():
+            with self.subTest(event=event):
+                hook = entries[0]["hooks"][0]
+                self.assertEqual(hook["type"], "command")
+                self.assertTrue(hook["command"].endswith("claude-state-identicon.py"))
+                self.assertIn("emit", hook["args"])
+
+    def test_the_committed_vectors_match_a_fresh_generation(self):
+        result = self._run(["vectors"])
+        self.assertEqual(
+            json.loads(result.stdout.decode()),
+            json.loads(support.IDENTICON_VECTORS.read_text()),
+        )
+
+
+class TestSpecAndCodeAgree(unittest.TestCase):
+    def setUp(self):
+        self.text = support.IDENTICON_SPEC.read_text()
+
+    def test_the_spec_declares_the_implemented_version(self):
+        self.assertIn(f"**Version {ident.SPEC_VERSION}.**", self.text)
+
+    def test_the_override_filename_is_named(self):
+        self.assertIn(ident.OVERRIDE_FILENAME, self.text)
+
+    def test_every_key_source_is_documented(self):
+        for source in ident.SOURCE_NOTES:
+            with self.subTest(source=source):
+                self.assertIn(f"`{source}`", self.text)
+
+    def test_the_conformance_file_is_named(self):
+        self.assertIn("identicon/vectors.json", self.text)
 
 
 class TestCliSurface(unittest.TestCase):
