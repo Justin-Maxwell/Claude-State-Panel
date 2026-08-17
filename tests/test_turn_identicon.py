@@ -15,6 +15,7 @@ prompted this file.
 
 import base64
 import json
+import os
 import re
 import struct
 import subprocess
@@ -96,6 +97,7 @@ class TestTheBakedConstant(unittest.TestCase):
     """
 
     SETTINGS = support.REPO_ROOT / ".claude" / "settings.json"
+    PAYLOAD = support.REPO_ROOT / ".claude" / "identicon.json"
 
     def hook_command(self):
         settings = json.loads(self.SETTINGS.read_text())
@@ -108,32 +110,48 @@ class TestTheBakedConstant(unittest.TestCase):
     def test_the_hook_runs_no_interpreter_and_no_script(self):
         """The whole point. If this ever grows a path to a script again, the
         constant is being recomputed and the 68ms is back."""
-        command = self.hook_command()
-        self.assertEqual("command", command["type"])
-        self.assertTrue(command["command"].startswith("printf %s "),
-                        f"expected a literal printf, got {command['command'][:40]!r}")
-        for forbidden in ("python", ".py", "identicon", "git ", "|", "&&", "$("):
-            self.assertNotIn(forbidden, command["command"].split("printf %s ")[0] + " ",
-                             "the command must derive nothing")
+        handler = self.hook_command()
+        self.assertEqual("command", handler["type"])
+        self.assertEqual("cat ${CLAUDE_PROJECT_DIR}/.claude/identicon.json",
+                         handler["command"])
 
-    def test_the_baked_literal_is_still_correct(self):
+    def test_the_payload_is_a_separate_file(self):
+        """settings.json is hand-edited configuration. A base64 blob inside it
+        makes every diff unreadable and invites breaking the icon while editing
+        an unrelated hook. Split, the config never changes when the icon does."""
+        self.assertTrue(self.PAYLOAD.exists())
+        self.assertNotIn("base64", self.SETTINGS.read_text())
+
+    def test_the_hook_path_survives_a_changed_working_directory(self):
+        """Hook commands resolve relative paths against the working directory,
+        and the working directory can change mid-session -- there is a
+        CwdChanged event for exactly that. ${CLAUDE_PROJECT_DIR} is documented
+        as surviving it; a relative path would not."""
+        self.assertIn("${CLAUDE_PROJECT_DIR}", self.hook_command()["command"])
         emitted = subprocess.run(
             ["sh", "-c", self.hook_command()["command"]],
-            capture_output=True, text=True, timeout=30,
+            capture_output=True, text=True, timeout=30, cwd="/",
+            env={**os.environ, "CLAUDE_PROJECT_DIR": str(support.REPO_ROOT)},
         )
         self.assertEqual(0, emitted.returncode, emitted.stderr)
-        self.assertEqual(json.loads(emit().stdout), json.loads(emitted.stdout),
-                         "the committed literal has drifted from the derivation; "
-                         "regenerate with: probe/turn-identicon.py --settings")
+        self.assertEqual(json.loads(emit().stdout), json.loads(emitted.stdout))
 
-    def test_the_generator_reproduces_the_committed_file(self):
-        generated = subprocess.run(
-            ["python3", str(HOOK), "--settings"],
-            capture_output=True, text=True, timeout=30, cwd=str(support.REPO_ROOT),
-        )
-        self.assertEqual(0, generated.returncode, generated.stderr)
-        self.assertEqual(json.loads(self.SETTINGS.read_text()),
-                         json.loads(generated.stdout))
+    def test_the_stored_payload_is_still_correct(self):
+        self.assertEqual(
+            json.loads(emit().stdout), json.loads(self.PAYLOAD.read_text()),
+            "the stored payload has drifted from the derivation; regenerate "
+            "with: probe/turn-identicon.py --install")
+
+    def test_the_generator_reproduces_both_committed_files(self):
+        for flag, path in (("--settings", self.SETTINGS), ("--payload", self.PAYLOAD)):
+            with self.subTest(flag=flag):
+                generated = subprocess.run(
+                    ["python3", str(HOOK), flag], capture_output=True, text=True,
+                    timeout=30, cwd=str(support.REPO_ROOT),
+                )
+                self.assertEqual(0, generated.returncode, generated.stderr)
+                self.assertEqual(json.loads(path.read_text()),
+                                 json.loads(generated.stdout))
 
 
 if __name__ == "__main__":

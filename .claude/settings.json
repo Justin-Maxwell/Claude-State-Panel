@@ -5,7 +5,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "printf %s '{\"systemMessage\":\"![](data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAB4AAAAeCAYAAAA7MK6iAAAAPklEQVR42mNgGAVIQG3Szf/omBJ1oxaPWjxq8ajF1LWY2q4m2rxRi0ctpllKH7V4+Fs8WkmMWkxXi0cBNQEAdUPAz/qM49gAAAAASUVORK5CYII=)\"}'"
+            "command": "cat ${CLAUDE_PROJECT_DIR}/.claude/identicon.json"
           }
         ]
       }

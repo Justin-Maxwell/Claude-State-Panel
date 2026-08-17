@@ -67,39 +67,74 @@ def message_for(cwd):
     return f"![](data:image/png;base64,{base64.b64encode(png).decode('ascii')})"
 
 
-def settings_fragment(cwd):
+PAYLOAD_NAME = "identicon.json"
+HOOK_COMMAND = "cat ${CLAUDE_PROJECT_DIR}/.claude/" + PAYLOAD_NAME
+
+
+def payload_for(cwd):
+    """The hook's entire stdout: the finished `systemMessage`, ready to print."""
+    return json.dumps({"systemMessage": message_for(cwd)}, separators=(",", ":"))
+
+
+def settings_fragment():
     """A project-level hook that emits the identicon with no derivation at all.
 
     The identicon is a *constant* for a repository. Deriving it once per turn --
     a Python process, a module import and two git calls, 68ms measured -- to
-    reproduce a string that cannot change is work for its own sake. So the
-    string is baked into the hook and the turn-end cost is one `printf`: 2.3ms
-    measured, thirty times cheaper, with nothing left to go wrong.
+    reproduce a string that cannot change is work for its own sake. Reading the
+    finished string costs 2.4ms, and nothing can go wrong in between.
 
-    This belongs in the *project's* `.claude/settings.json`, not the user's.
-    Each repository then carries its own literal, which is what makes a baked
-    constant workable at all -- there is no global place a per-repository
-    string could live.
+    The payload is a *separate file*, not a literal in here. `settings.json` is
+    hand-edited configuration; a 219-character base64 blob inside it makes every
+    diff unreadable and invites someone to break the icon while editing an
+    unrelated hook. Split, the config never changes when the icon does.
+
+    `${CLAUDE_PROJECT_DIR}` rather than a relative path: hook commands resolve
+    relative paths against the working directory, and the working directory can
+    change mid-session. The placeholder is documented as surviving that.
+
+    This belongs in the *project's* `.claude/`, not the user's -- there is no
+    global place a per-repository constant could live, and a user-level hook
+    would have to rederive the key every turn just to learn which repository it
+    was in, which is the entire cost being removed.
 
     It survives cloning, because the key is the git remote rather than a path
-    (finding Q). The committed literal is correct in every checkout of this
+    (finding Q). The committed files are correct in every checkout of this
     repository, on any machine, which a path-keyed identicon could never manage.
     """
-    payload = json.dumps({"systemMessage": message_for(cwd)},
-                         separators=(",", ":"))
     return {
         "hooks": {
-            "Stop": [
-                {"hooks": [{"type": "command",
-                            "command": f"printf %s {shlex.quote(payload)}"}]}
-            ]
+            "Stop": [{"hooks": [{"type": "command", "command": HOOK_COMMAND}]}]
         }
     }
 
 
+def install(cwd):
+    """Write both files under `<cwd>/.claude/`. Returns the paths written."""
+    target = os.path.join(cwd, ".claude")
+    os.makedirs(target, exist_ok=True)
+
+    settings_path = os.path.join(target, "settings.json")
+    payload_path = os.path.join(target, PAYLOAD_NAME)
+
+    with open(settings_path, "w", encoding="utf-8") as handle:
+        handle.write(json.dumps(settings_fragment(), indent=2) + "\n")
+    with open(payload_path, "w", encoding="utf-8") as handle:
+        handle.write(payload_for(cwd) + "\n")
+
+    return settings_path, payload_path
+
+
 def main():
     if "--settings" in sys.argv:
-        print(json.dumps(settings_fragment(os.getcwd()), indent=2))
+        print(json.dumps(settings_fragment(), indent=2))
+        return 0
+    if "--payload" in sys.argv:
+        print(payload_for(os.getcwd()))
+        return 0
+    if "--install" in sys.argv:
+        for path in install(os.getcwd()):
+            print(path)
         return 0
 
     try:
