@@ -177,6 +177,28 @@ _IDENTITY_SATURATION = 0.52
 _IDENTITY_LIGHTNESS = 0.55
 
 
+def identity_key(cwd):
+    """The string a project's identity is derived from: its path from home.
+
+    `Code/Projects/Glyph-Hunter`, not `/home/justin/Code/Projects/Glyph-Hunter`.
+    The home prefix is identical for every project on the machine, so it adds
+    nothing to the hash while tying the result to one user's home directory for
+    no gain. Paths outside home keep their absolute form -- there is nothing to
+    strip, and they are rare enough not to warrant a second convention.
+
+    The whole relative path is used, not the basename: two checkouts of the
+    same project are different projects to anyone looking at the panel, and
+    keying on the full path separates them without needing a disambiguator.
+    """
+    path = (cwd or "").rstrip("/")
+    home = os.path.expanduser("~").rstrip("/")
+    if path == home:
+        return "~"
+    if path.startswith(home + "/"):
+        return path[len(home) + 1:]
+    return path
+
+
 def project_identity(cwd):
     """Stable (colour, identicon) for a project path.
 
@@ -185,7 +207,7 @@ def project_identity(cwd):
     image keeps the rendering decision with the renderers -- the panel draws it
     at a size where it would be mush, so it does not; the popup has room.
     """
-    digest = hashlib.sha256((cwd or "").encode("utf-8")).digest()
+    digest = hashlib.sha256(identity_key(cwd).encode("utf-8")).digest()
 
     hue = digest[0] / 256.0
     red, green, blue = colorsys.hls_to_rgb(hue, _IDENTITY_LIGHTNESS,

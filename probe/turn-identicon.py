@@ -116,12 +116,14 @@ def main():
         # A hook that fails must not disturb the session it is decorating.
         return 0
 
-    label = pathlib.Path(cwd).name
     if "--text" in sys.argv:
-        message = f"{render_text(grid)}\n{label}"
+        message = render_text(grid)
     else:
+        # Empty alt text: the icon is the whole message. A printed name beside
+        # it is redundant when you already know which window you are looking
+        # at, and it is the identicon that has to do the work.
         encoded = base64.b64encode(render_png(grid, colour)).decode("ascii")
-        message = f"![{label}](data:image/png;base64,{encoded})"
+        message = f"![](data:image/png;base64,{encoded})"
 
     print(json.dumps({"systemMessage": message}))
     return 0

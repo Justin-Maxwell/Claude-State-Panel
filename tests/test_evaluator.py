@@ -223,6 +223,29 @@ class TestProjectIdentity(unittest.TestCase):
         self.assertEqual(evaluator.project_identity(path),
                          reloaded.project_identity(path))
 
+    def test_identity_is_keyed_on_the_path_from_home(self):
+        """Justin's direction, 2026-08-17. The home prefix is the same for every
+        project on the machine, so it adds nothing to the hash."""
+        home = os.path.expanduser("~").rstrip("/")
+        self.assertEqual("Code/Projects/Thing",
+                         evaluator.identity_key(f"{home}/Code/Projects/Thing"))
+        self.assertEqual("Code/Projects/Thing",
+                         evaluator.identity_key(f"{home}/Code/Projects/Thing/"))
+
+    def test_a_path_outside_home_keeps_its_absolute_form(self):
+        """There is nothing to strip, and inventing a second convention for a
+        rare case buys nothing."""
+        self.assertEqual("/opt/checkouts/Thing",
+                         evaluator.identity_key("/opt/checkouts/Thing"))
+
+    def test_two_checkouts_of_one_project_are_different_projects(self):
+        """The whole relative path is hashed, not the basename -- to anyone
+        looking at the panel these are two different things, and keying on the
+        full path separates them without needing the label disambiguator."""
+        home = os.path.expanduser("~").rstrip("/")
+        self.assertNotEqual(evaluator.project_identity(f"{home}/Code/Projects/Thing"),
+                            evaluator.project_identity(f"{home}/Code/Foreign/Thing"))
+
     def test_colour_is_a_lowercase_hex_triplet(self):
         colour, _ = evaluator.project_identity("/home/justin/Code/Projects/Thing")
         self.assertRegex(colour, r"^#[0-9a-f]{6}$")
