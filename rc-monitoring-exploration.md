@@ -432,6 +432,52 @@ human in them. The same binary's `--json` *does* report all four.
   merely unfilled; the nearest first-party thing actively reports zero when the answer
   is four. That is the clearest statement yet of why this widget should exist.
 
+### 11.10 Where to pick this up — 2026-08-17, end of day
+
+The turn-end identicon works and is settled: `CLAUDE.md` carries the literal, the
+artifact is `repository-identicon-png.b64`, conformance is pinned against
+`stewartlord/identicon.js`. Justin: "not 100% perfect but 85% at least."
+
+**The panel is next, and it is still broken in the way this document opens with.**
+Nothing in today's identicon work touched it.
+
+1. **`reportable()` still drops every Desktop session.** [§11.1](#111-the-panel-is-blind-to-desktop-sessions--today-silently).
+   `doctor` reports the untouched Konsole tab and hides both sessions with a
+   human in them. This is the headline defect and it is untouched.
+2. **The "glyph on first typing" ruling is unimplemented.** Absence of a
+   transcript is the cheap test, from the `inotify` watch T1 already needs.
+3. **P11, five minutes:** open a VS Code session and grep its cmdline for
+   `--output-format stream-json`. Decides whether [§11.8](#118-the-mechanism)'s
+   split costs one surface or two.
+4. **Phase 2's acceptance test is still outstanding** — how it *looks* at panel
+   size. Only Justin can run it.
+
+**Deferred by Justin, 2026-08-17:** a matching colour blob in the conversation
+title, as an adjunct to the in-chat identicon. `set_session_title` is the
+mechanism; the cost is emoji's nine-colour palette and no shape, and the gain is
+that a title has the per-conversation proximity a window icon lacks
+([§11.11](#1111-what-the-desktop-client-does-not-offer)).
+
+### 11.11 What the desktop client does not offer
+
+Recorded so nobody spends another day finding out. Every route to putting an
+icon in Claude Desktop's own chrome was tried and none works:
+
+- **Hook output** — no field can carry an image; `systemMessage` is plain text
+  with the event name prefixed per line. Finding V.
+- **`statusLine`** — documented, project-scoped, replaces the footer, and is
+  **ignored entirely by the desktop app**. Tested in a fresh session, not just a
+  running one, so it is not a reload problem.
+- **`_NET_WM_ICON`** — technically works. The app runs under XWayland, the
+  property was unset, and setting it was accepted and read back correctly. It
+  changed nothing visible, and Justin's objection kills it anyway: one window
+  hosts many conversations, so a window icon has no proximity association and
+  would be actively misleading. Also dies whenever the build goes native
+  Wayland.
+
+The only channel that renders markdown is an assistant message. Which is an
+argument *for* the panel widget: it needs no cooperation from the client at all.
+
 ---
 
 ## 12. Sources
