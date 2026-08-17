@@ -401,6 +401,37 @@ transcript. That is precisely the writer, the state file, and the three classes 
 Phase 1 deleted — returning for one surface only. There is no way to like this; the
 choice is which surface to serve and how honestly to say so.
 
+### 11.9 Reaching a Desktop chat from the console — and what the first party offers
+
+Both verified by capturing the real TUIs in a pty, not read from `--help`.
+
+- **`claude -r` in a konsole tab does list Desktop chats.** Top entry of the picker
+  was *"RC monitoring exploration implications · 43 seconds ago · main · 442.4KB"* —
+  this session, auto-titled, indistinguishable in the list from a CLI one. The picker
+  reads `~/.claude/projects/<slug>/`, and [§11.3](#113-t1-is-strengthened--it-is-now-the-only-substrate-proven-to-cover-both)
+  established Desktop writes there. `Ctrl+A` widens it to all projects.
+- Picker footer offers **`Space` to preview** — a read-only look at a conversation
+  without resuming it. That is the safe way to read a *live* Desktop chat.
+- **`Enter` resumes, and resuming a live session means two writers on one session id.**
+  Use `--fork-session` (new session id, original untouched) if the Desktop session is
+  still running. *(Hazard reasoned from the flag's documented behaviour; concurrent
+  resume not driven. `[7%|6%|5%]`)*
+- **There is no attach, mirror, or live view.** A konsole tab and a Desktop session are
+  independent processes on incompatible transports — TUI versus stream-json over stdio.
+  The absence of any "connection" indication is correct: there is nothing to indicate.
+
+**The first-party agent view does not close this gap.** `claude agents` (no `--json`)
+opens a TUI reporting **"0 awaiting input · 0 working · 9 completed"** and lists only
+background and completed sessions — while four sessions were live, two of them with a
+human in them. The same binary's `--json` *does* report all four.
+
+- → The interactive TUI and the JSON output of one command **disagree about what a
+  session is**. `--json` is the strictly better source, which is at least the right
+  way round for this project.
+- → No first-party surface shows live interactive sessions. The panel's niche is not
+  merely unfilled; the nearest first-party thing actively reports zero when the answer
+  is four. That is the clearest statement yet of why this widget should exist.
+
 ---
 
 ## 12. Sources
