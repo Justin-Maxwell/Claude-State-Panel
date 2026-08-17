@@ -58,6 +58,14 @@ Phase 2 must not begin with any Phase 0 item unresolved.
   the event name is prefixed to the message.
 - **Test:** registered the committed `.claude/settings.json` hook in a live
   Claude Desktop session, 2026-08-17.
+- **The control, which is the real evidence.** The *identical* 187-character
+  string renders as an image when it appears in an assistant message and as
+  literal text when it arrives via `systemMessage` — same client, same markdown
+  parser, same session, minutes apart. So this is a property of the channel, not
+  of the string, the encoding or the client's markdown support. The
+  documentation quote often given for this ("warning message shown to the user")
+  says only what the field is *for* and settles nothing; it should not be cited
+  as though it did.
 - **Date:** 2026-08-17
 - **Consequence:** the design premise is gone. The docs never promised markdown
   -- `systemMessage` is described only as "warning message shown to the user" --
