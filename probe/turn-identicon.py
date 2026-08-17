@@ -35,8 +35,8 @@ import zlib
 
 _EVALUATOR = pathlib.Path(__file__).resolve().parent.parent / "evaluator" / "claude-state-eval.py"
 
-CELL = 12
-QUIET = 1
+CELL = 6
+QUIET = 0
 
 
 def _project_identity(cwd):
