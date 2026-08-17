@@ -39,7 +39,7 @@ import base64
 import importlib.util
 import json
 import os
-import shlex
+import re
 import sys
 
 SIZE = 30
@@ -145,22 +145,29 @@ def settings_fragment():
 
 
 def install(cwd):
-    """Write the identifier and the hook. Returns the paths written.
+    """Write the artifact and refresh the literal in CLAUDE.md.
 
-    The identifier goes to the repository root; the hook goes under `.claude/`,
-    because only the second of the two is Claude Code's concern.
+    No hook is written. Finding V: a hook's `systemMessage` arrives as plain
+    text with the event name prefixed to every line, and no hook output field
+    can display an image. The only channel that renders markdown in a GUI chat
+    client is an assistant message, which a hook cannot reach and an
+    instruction can.
     """
     b64_path = os.path.join(cwd, B64_NAME)
     with open(b64_path, "w", encoding="utf-8") as handle:
         handle.write(b64_for(cwd) + "\n")
 
-    claude = os.path.join(cwd, ".claude")
-    os.makedirs(claude, exist_ok=True)
-    settings_path = os.path.join(claude, "settings.json")
-    with open(settings_path, "w", encoding="utf-8") as handle:
-        handle.write(json.dumps(settings_fragment(), indent=2) + "\n")
+    instructions = os.path.join(cwd, "CLAUDE.md")
+    if os.path.exists(instructions):
+        with open(instructions, encoding="utf-8") as handle:
+            text = handle.read()
+        replaced = re.sub(r"!\[\]\(data:image/png;base64,[A-Za-z0-9+/=]+\)",
+                          message_for(cwd), text, count=1)
+        if replaced != text:
+            with open(instructions, "w", encoding="utf-8") as handle:
+                handle.write(replaced)
 
-    return b64_path, settings_path
+    return b64_path, instructions
 
 
 def main():
