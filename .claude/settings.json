@@ -5,7 +5,7 @@
         "hooks": [
           {
             "type": "command",
-            "command": "printf '{\"systemMessage\":\"![](data:image/png;base64,%s)\"}' \"$(base64 < ${CLAUDE_PROJECT_DIR}/.identicon.png | tr -d '\\n')\""
+            "command": "printf '{\"systemMessage\":\"![](data:image/png;base64,%s)\"}' \"$(cat ${CLAUDE_PROJECT_DIR}/repository-identicon-png.b64)\""
           }
         ]
       }

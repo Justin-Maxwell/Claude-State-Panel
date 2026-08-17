@@ -97,7 +97,7 @@ class TestTheBakedConstant(unittest.TestCase):
     """
 
     SETTINGS = support.REPO_ROOT / ".claude" / "settings.json"
-    ICON = support.REPO_ROOT / ".identicon.png"
+    ARTIFACT = support.REPO_ROOT / "repository-identicon-png.b64"
 
     def hook_command(self):
         settings = json.loads(self.SETTINGS.read_text())
@@ -116,29 +116,31 @@ class TestTheBakedConstant(unittest.TestCase):
             self.assertNotIn(forbidden, handler["command"],
                              "the hook must derive nothing")
 
-    def test_the_icon_is_stored_as_an_image_outside_dot_claude(self):
+    def test_the_identifier_is_at_the_root_and_not_under_dot_claude(self):
         """An identicon identifies the repository, not this tool's use of it.
-        It belongs where Konsole, a README badge or anything else can pick it
-        up. Only the hook is Claude Code's business, so only the hook is filed
-        under .claude/."""
-        self.assertTrue(self.ICON.exists(), f"{self.ICON.name} must be at the root")
-        self.assertEqual(b"\x89PNG\r\n\x1a\n", self.ICON.read_bytes()[:8])
-        self.assertFalse((support.REPO_ROOT / ".claude" / "identicon.json").exists(),
-                         "the Claude-shaped payload file should be gone")
+        Only the hook is Claude Code's business, so only the hook is filed under
+        .claude/. The name says whose identicon, of what, in what encoding, so
+        a repository carrying it needs nothing else to explain it."""
+        self.assertTrue(self.ARTIFACT.exists(),
+                        f"{self.ARTIFACT.name} must be at the repository root")
+        self.assertFalse((support.REPO_ROOT / ".claude" / "identicon.json").exists())
+        self.assertFalse((support.REPO_ROOT / ".identicon.png").exists())
 
-    def test_the_image_is_not_inlined_into_the_settings(self):
+    def test_the_artifact_is_bare_base64_with_no_wrapper(self):
+        """No data URI prefix, no JSON, no markdown. The hook supplies all of
+        that; the file is the bytes and nothing else, which is what the name
+        promises."""
+        text = self.ARTIFACT.read_text()
+        self.assertEqual(1, len(text.strip().splitlines()))
+        self.assertRegex(text.strip(), r"^[A-Za-z0-9+/]+=*$")
+        self.assertEqual(b"\x89PNG\r\n\x1a\n", base64.b64decode(text.strip())[:8])
+
+    def test_it_is_not_inlined_into_the_settings(self):
         """A base64 blob inside hand-edited configuration makes every diff
         unreadable and invites breaking the icon while editing another hook."""
         settings = self.SETTINGS.read_text()
-        self.assertNotIn("iVBOR", settings, "the PNG itself must not be inlined")
+        self.assertNotIn("iVBOR", settings)
         self.assertLess(len(settings), 400)
-
-    def test_the_command_uses_portable_base64(self):
-        """`base64 -w0` is GNU-only; BSD and macOS do not have it. The committed
-        settings are cloned to machines this one knows nothing about."""
-        command = self.hook_command()["command"]
-        self.assertNotIn("-w0", command)
-        self.assertIn("tr -d", command)
 
     def test_the_hook_path_survives_a_changed_working_directory(self):
         """Hook commands resolve relative paths against the working directory,
@@ -154,31 +156,36 @@ class TestTheBakedConstant(unittest.TestCase):
         self.assertEqual(0, emitted.returncode, emitted.stderr)
         self.assertEqual(json.loads(emit().stdout), json.loads(emitted.stdout))
 
-    def test_the_stored_image_is_still_correct(self):
-        """The committed PNG must be the one the current spec produces. If the
+    def test_the_stored_artifact_is_still_correct(self):
+        """The committed base64 must be what the current spec produces. If the
         reference is ever bumped this fails, instead of a stale icon sitting in
         the tree contradicting the README."""
         message = json.loads(emit().stdout)["systemMessage"]
-        derived = base64.b64decode(MARKDOWN_IMAGE.match(message).group(1))
-        self.assertEqual(derived, self.ICON.read_bytes(),
-                         "the committed .identicon.png has drifted; regenerate "
-                         "with: probe/turn-identicon.py --install")
+        self.assertEqual(MARKDOWN_IMAGE.match(message).group(1),
+                         self.ARTIFACT.read_text().strip(),
+                         "the committed artifact has drifted; regenerate with: "
+                         "probe/turn-identicon.py --install")
+
+    def test_the_hook_reproduces_the_derived_message_exactly(self):
+        """End to end: the committed file, through the committed command, must
+        equal what deriving from scratch produces."""
+        emitted = subprocess.run(
+            ["sh", "-c", self.hook_command()["command"]],
+            capture_output=True, text=True, timeout=30, cwd="/",
+            env={**os.environ, "CLAUDE_PROJECT_DIR": str(support.REPO_ROOT)},
+        )
+        self.assertEqual(0, emitted.returncode, emitted.stderr)
+        self.assertEqual(json.loads(emit().stdout), json.loads(emitted.stdout))
 
     def test_the_generator_reproduces_both_committed_files(self):
-        settings = subprocess.run(
-            ["python3", str(HOOK), "--settings"], capture_output=True, text=True,
-            timeout=30, cwd=str(support.REPO_ROOT),
-        )
-        self.assertEqual(0, settings.returncode, settings.stderr)
-        self.assertEqual(json.loads(self.SETTINGS.read_text()),
-                         json.loads(settings.stdout))
-
-        icon = subprocess.run(
-            ["python3", str(HOOK), "--icon"], capture_output=True,
-            timeout=30, cwd=str(support.REPO_ROOT),
-        )
-        self.assertEqual(0, icon.returncode, icon.stderr)
-        self.assertEqual(self.ICON.read_bytes(), icon.stdout)
+        for flag, path in (("--settings", self.SETTINGS), ("--b64", self.ARTIFACT)):
+            with self.subTest(flag=flag):
+                generated = subprocess.run(
+                    ["python3", str(HOOK), flag], capture_output=True, text=True,
+                    timeout=30, cwd=str(support.REPO_ROOT),
+                )
+                self.assertEqual(0, generated.returncode, generated.stderr)
+                self.assertEqual(path.read_text().strip(), generated.stdout.strip())
 
 
 if __name__ == "__main__":

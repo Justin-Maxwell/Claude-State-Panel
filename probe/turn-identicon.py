@@ -67,14 +67,17 @@ def message_for(cwd):
     return f"![](data:image/png;base64,{base64.b64encode(png).decode('ascii')})"
 
 
-ICON_NAME = ".identicon.png"
+# Named by Justin. Not hidden and not abbreviated: it says what it holds, in
+# the order you need to know it -- whose identicon, of what, in what encoding.
+# A repository that carries this file should not need anything else to explain
+# it.
+B64_NAME = "repository-identicon-png.b64"
 
-# `base64 ... | tr -d '\n'` rather than GNU's `base64 -w0`, which BSD and macOS
-# do not have. Costs 4.9ms against 3.1ms; the committed file is cloned to
-# machines this one knows nothing about, so portability wins the 1.8ms.
+# `$(cat ...)` strips the trailing newline, so the file can be a well-formed
+# text file and the data URI still comes out clean.
 HOOK_COMMAND = (
     """printf '{"systemMessage":"![](data:image/png;base64,%s)"}' """
-    """"$(base64 < ${CLAUDE_PROJECT_DIR}/""" + ICON_NAME + """ | tr -d '\\n')\""""
+    """"$(cat ${CLAUDE_PROJECT_DIR}/""" + B64_NAME + """)\""""
 )
 
 
@@ -84,10 +87,20 @@ def payload_for(cwd):
 
 
 def icon_for(cwd):
-    """The identicon PNG itself -- the artifact that gets committed."""
+    """The identicon PNG. Rendered on demand; only its base64 is committed."""
     module = _identicon()
     key, _source = module.resolve_key(cwd)
     return module.render_png(key, SIZE)
+
+
+def b64_for(cwd):
+    """The committed artifact: base64 of the PNG, no wrapper, no newline.
+
+    Stored rather than the PNG because the hook is the only consumer and it
+    needs exactly this. Storing the image and re-encoding it every turn cost
+    2.5ms to produce a file nothing else read -- measured, then removed.
+    """
+    return base64.b64encode(icon_for(cwd)).decode("ascii")
 
 
 def settings_fragment():
@@ -98,15 +111,18 @@ def settings_fragment():
     reproduce a string that cannot change is work for its own sake. Reading the
     finished string costs 2.4ms, and nothing can go wrong in between.
 
-    What is stored is the *image*, at `.identicon.png` in the repository root,
-    and the hook base64s it on the way out. Two reasons it is not a ready-made
-    payload file. A 219-character blob inside `settings.json` makes every diff
-    unreadable and invites breaking the icon while editing an unrelated hook.
-    And an identicon identifies the *repository*, not this tool's use of it --
-    it belongs where Konsole, a README badge or anything else can pick it up,
-    not filed under `.claude/` as though Claude Code owned it. The hook lives in
-    `.claude/` because a Claude Code hook genuinely is Claude Code's business;
-    the identifier does not.
+    What is stored is `repository-identicon-png.b64` in the repository root:
+    base64 of the PNG, and nothing else. Not inside `settings.json`, because a
+    219-character blob in hand-edited configuration makes every diff unreadable
+    and invites breaking the icon while editing an unrelated hook. Not under
+    `.claude/`, because an identicon identifies the *repository*, not this
+    tool's use of it -- the hook lives there because a Claude Code hook
+    genuinely is Claude Code's business, and the identifier does not.
+
+    Not the PNG either, though that was tried. The hook is the only consumer,
+    it needs the base64, and re-encoding an image every turn cost 2.5ms to
+    maintain a file nothing else read. The name carries what the bytes are, so
+    the encoding costs no clarity.
 
     `${CLAUDE_PROJECT_DIR}` rather than a relative path: hook commands resolve
     relative paths against the working directory, and the working directory can
@@ -129,14 +145,14 @@ def settings_fragment():
 
 
 def install(cwd):
-    """Write the icon and the hook. Returns the paths written.
+    """Write the identifier and the hook. Returns the paths written.
 
-    The icon goes to the repository root; the hook goes under `.claude/`,
+    The identifier goes to the repository root; the hook goes under `.claude/`,
     because only the second of the two is Claude Code's concern.
     """
-    icon_path = os.path.join(cwd, ICON_NAME)
-    with open(icon_path, "wb") as handle:
-        handle.write(icon_for(cwd))
+    b64_path = os.path.join(cwd, B64_NAME)
+    with open(b64_path, "w", encoding="utf-8") as handle:
+        handle.write(b64_for(cwd) + "\n")
 
     claude = os.path.join(cwd, ".claude")
     os.makedirs(claude, exist_ok=True)
@@ -144,7 +160,7 @@ def install(cwd):
     with open(settings_path, "w", encoding="utf-8") as handle:
         handle.write(json.dumps(settings_fragment(), indent=2) + "\n")
 
-    return icon_path, settings_path
+    return b64_path, settings_path
 
 
 def main():
@@ -156,6 +172,9 @@ def main():
         return 0
     if "--icon" in sys.argv:
         sys.stdout.buffer.write(icon_for(os.getcwd()))
+        return 0
+    if "--b64" in sys.argv:
+        print(b64_for(os.getcwd()))
         return 0
     if "--install" in sys.argv:
         for path in install(os.getcwd()):
