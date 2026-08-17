@@ -248,6 +248,57 @@ just identicon-uninstall
 Full write-up, with the upstream evidence for every claim, in
 `docs/konsole-identicons.md`.
 
+## Identicons
+
+**The convention is GitHub's, as reverse-engineered by the community. It is not
+a specification GitHub publishes, and it is not any third-party library.**
+
+That distinction matters enough to write down. GitHub has never published an
+identicon algorithm; what circulates is reverse-engineering, and the projects
+that document it say so — [kashav/identicon](https://github.com/kashav/identicon)
+describes itself as "Reverse-engineering GitHub's avatar generation algorithm".
+So there is no upstream to track, no version to pin, and nothing to be
+compatible *with*. Our own `docs/project-identicon-spec.md` is the only
+authority this repository has, and it is normative here.
+
+What that convention gives us, and why it was worth following: MD5, a 5×5 grid,
+one cell per digest byte by parity, filled from the centre column outward and
+mirrored left to right. Chosen because it is strongly associated with code
+already — a developer reading a panel recognises the shape language without
+being taught it — and because it has been rendered at avatar size by a great
+many implementations, so its spread over a 5×5 mirrored grid is well exercised.
+
+Deliberate divergences from the reverse-engineered description, recorded so
+nobody later mistakes them for bugs:
+
+| | community description | here |
+|---|---|---|
+| digest | MD5 | MD5 |
+| grid unit | 15 nibbles | 15 **bytes** |
+| fill test | parity, even is foreground | parity, even is foreground |
+| order | centre column outward, mirrored | same |
+| colour | last 7 nibbles, S from a 65% band | one byte for hue, S and L fixed |
+| key | GitHub user id | `host/owner/repo` from the git remote |
+
+The key is the largest divergence and the deliberate one. GitHub identicons are
+keyed on a *user*; ours are keyed on a *repository*, so the same project cloned
+to a different path — or into one of the per-session worktrees the desktop app
+creates — is one identity. Finding Q. A consequence worth knowing: two checkouts
+of one repository share an identicon, and the popup's label disambiguator is
+what separates them on screen.
+
+MD5 is appropriate precisely because no security property is claimed. This is a
+visual hash. Nothing authenticates against it and nothing is protected by it.
+
+**One implementation, and it is not the evaluator.**
+`identicon/claude-state-identicon.py` implements the spec.
+`evaluator/claude-state-eval.py` imports it; `probe/turn-identicon.py` imports
+it; the Konsole icon and profile routes use it. For one day the evaluator had
+its own derivation — SHA-256, bit-shifted — while the Konsole branch had
+another, and the two produced different pictures from an identical key. That is
+the failure the single import exists to prevent, and it is why "the panel and
+`doctor` cannot disagree" is a fact about the code rather than an intention.
+
 ## Naming
 
 The project was renamed from `claude-session-panel` to `claude-state-panel`

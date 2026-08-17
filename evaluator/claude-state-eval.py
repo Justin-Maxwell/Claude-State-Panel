@@ -24,8 +24,6 @@ ceiling, and no liveness check in this file, and their absence is the point.
 Standard library only. No network. Never reads ~/.claude/.credentials.json.
 """
 
-import colorsys
-import hashlib
 import json
 import os
 import subprocess
@@ -173,167 +171,82 @@ def label_for(session):
 # project colour equally readable against a panel, and stops the hash from
 # occasionally producing something black, white, or invisible.
 IDENTICON_SIZE = 5
-_IDENTITY_SATURATION = 0.52
-_IDENTITY_LIGHTNESS = 0.55
+
+# There is exactly one implementation of the identicon, and it is not here.
+# `identicon/claude-state-identicon.py` implements `docs/project-identicon-spec.md`;
+# this file imports it rather than deriving anything itself. For one day it did
+# derive its own -- SHA-256, bit-shifted -- while the Konsole branch derived
+# another -- MD5, byte parity -- and the two disagreed on screen from the same
+# key. That is the failure this module-level import exists to prevent.
+_IDENTICON_MODULE = None
+
+# `resolve_key` shells out to git. The evaluator is called once per poll with
+# every live session, and several sessions routinely share one directory, so
+# the answer is memoised for the life of the process. A fresh process per poll
+# means this never goes stale across polls.
+_IDENTITY_CACHE = {}
 
 
-def _git_dir(start):
-    """Nearest `.git` at or above `start`, resolved through worktree pointers.
+def _identicon():
+    """Load the identicon implementation once per process."""
+    global _IDENTICON_MODULE
+    if _IDENTICON_MODULE is None:
+        import importlib.util
 
-    A plain checkout has `.git` as a directory. A worktree or submodule has it
-    as a *file* holding `gitdir: <path>`; the directory that points at usually
-    carries a `commondir` naming the shared git directory, which is the one
-    holding `config`. Following both means a worktree reports the same repo as
-    its parent checkout, which is the intent -- they are one project.
-    """
-    path = os.path.abspath(start)
-    while True:
-        candidate = os.path.join(path, ".git")
-        if os.path.isdir(candidate):
-            return candidate
-        if os.path.isfile(candidate):
-            try:
-                with open(candidate, encoding="utf-8", errors="replace") as handle:
-                    pointer = handle.read().strip()
-            except OSError:
-                return None
-            if not pointer.startswith("gitdir:"):
-                return None
-            resolved = os.path.join(path, pointer[len("gitdir:"):].strip())
-            common = os.path.join(resolved, "commondir")
-            try:
-                with open(common, encoding="utf-8", errors="replace") as handle:
-                    resolved = os.path.join(resolved, handle.read().strip())
-            except OSError:
-                pass
-            return os.path.abspath(resolved)
-        parent = os.path.dirname(path)
-        if parent == path:
-            return None
-        path = parent
-
-
-def _origin_url(git_dir):
-    """The `origin` remote's URL, read straight from `config`.
-
-    Parsed rather than shelled out to `git`: this runs once per session per
-    poll, and a file read costs nothing where a subprocess would. It also means
-    the panel works on a machine with no `git` on PATH.
-    """
-    section = None
-    try:
-        with open(os.path.join(git_dir, "config"), encoding="utf-8", errors="replace") as handle:
-            for line in handle:
-                stripped = line.strip()
-                if stripped.startswith("["):
-                    section = stripped
-                elif section == '[remote "origin"]' and stripped.startswith("url"):
-                    _, _, value = stripped.partition("=")
-                    return value.strip() or None
-    except OSError:
-        return None
-    return None
-
-
-def _repo_name(url):
-    """A remote URL reduced to `host/owner/repo`.
-
-    `https://github.com/Justin-Maxwell/Repo.git` and
-    `git@github.com:Justin-Maxwell/Repo.git` are the same repository and must
-    give the same identity, so the scheme, any `user@`, and the `.git` suffix
-    all come off. The host stays: a GitHub repo and a GitLab mirror of the same
-    name are different remotes and should look different.
-
-    Lower-cased, because portability is the whole point of keying on the repo
-    and the same repository is routinely cloned with different capitalisation.
-    The cost is that two repos differing only in case would collide.
-    """
-    text = (url or "").strip().rstrip("/")
-    for scheme in ("ssh://", "git+ssh://", "https://", "http://", "git://", "file://"):
-        if text.startswith(scheme):
-            text = text[len(scheme):]
-            break
-    head, separator, tail = text.partition("@")
-    if separator and "/" not in head:
-        text = tail
-    head, separator, tail = text.partition(":")
-    if separator and "/" not in head:
-        text = f"{head}/{tail}"
-    if text.endswith(".git"):
-        text = text[:-4]
-    return text.strip("/").lower() or None
-
-
-def _path_key(cwd):
-    """Fallback identity for a directory that is not a repository.
-
-    The path from home -- `Code/Projects/Thing` -- because the home prefix is
-    the same for every project on the machine and contributes nothing. Paths
-    outside home keep their absolute form.
-    """
-    path = (cwd or "").rstrip("/")
-    home = os.path.expanduser("~").rstrip("/")
-    if path == home:
-        return "~"
-    if path.startswith(home + "/"):
-        return path[len(home) + 1:]
-    return path
+        root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+        path = os.path.join(root, "identicon", "claude-state-identicon.py")
+        spec = importlib.util.spec_from_file_location("claude_state_identicon", path)
+        module = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(module)
+        _IDENTICON_MODULE = module
+    return _IDENTICON_MODULE
 
 
 def identity_key(cwd):
-    """The string a project's identity is derived from: its repository.
+    """The string a project's identity is derived from.
 
-    Justin's direction, 2026-08-17 -- the repo name is vastly more portable
-    than any path. The same repository cloned to `~/Code/Projects/Thing` on one
-    machine and `~/src/thing` on another is one project and gets one identicon;
-    a path key would call them two.
-
-    The consequence, stated rather than discovered later: two checkouts of the
-    same repository now share an identicon, where keying on the path separated
-    them. That is the right answer -- they are the same project -- and the
-    label disambiguator already distinguishes them in the popup.
-
-    A directory with no repository, or a repository with no `origin`, falls
-    back to the path. Nothing here raises: an identicon is decoration, and a
-    decoration must not be able to take the panel down.
+    Delegates to `resolve_key`, which tries, most specific first: an explicit
+    key, a committed `.claude-state-identicon`, the normalised git remote, the
+    repository top level, then the directory itself. Only the first three
+    survive being cloned somewhere else.
     """
-    path = (cwd or "").rstrip("/")
-    if not path:
-        return ""
-    try:
-        git_dir = _git_dir(path)
-        if git_dir:
-            name = _repo_name(_origin_url(git_dir))
-            if name:
-                return name
-    except OSError:
-        pass
-    return _path_key(path)
+    return _identicon().resolve_key(cwd or os.getcwd())[0]
+
 
 
 def project_identity(cwd):
     """Stable (colour, identicon) for a project path.
 
-    The identicon is a 5x5 grid, mirrored left-to-right the way GitHub's are,
-    returned as five strings of "0"/"1". Emitting the *pattern* rather than an
-    image keeps the rendering decision with the renderers -- the panel draws it
-    at a size where it would be mush, so it does not; the popup has room.
+    A thin adapter over the identicon implementation, converting its grid of
+    booleans into the five "0"/"1" strings the renderers already read. Emitting
+    the *pattern* rather than an image keeps the rendering decision with the
+    renderers -- the panel draws it at a size where it would be mush, so it does
+    not; the popup has room.
+
+    Nothing here derives anything. If the identicon needs to change, it changes
+    in the spec and in `identicon/claude-state-identicon.py`, and every consumer
+    follows on the next poll.
     """
-    digest = hashlib.sha256(identity_key(cwd).encode("utf-8")).digest()
+    directory = cwd or ""
+    cached = _IDENTITY_CACHE.get(directory)
+    if cached is not None:
+        return cached
 
-    hue = digest[0] / 256.0
-    red, green, blue = colorsys.hls_to_rgb(hue, _IDENTITY_LIGHTNESS,
-                                           _IDENTITY_SATURATION)
-    colour = "#%02x%02x%02x" % (round(red * 255), round(green * 255),
-                                round(blue * 255))
+    module = _identicon()
+    try:
+        key = identity_key(directory)
+    except Exception:
+        # An identicon is decoration. A repository that cannot be interrogated
+        # still gets one, from the path, rather than taking the panel down.
+        key = module.normalise_key(directory or os.getcwd())
 
-    # 15 cells: three columns per row, mirrored to five.
-    bits = int.from_bytes(digest[1:4], "big")
-    grid = []
-    for row in range(IDENTICON_SIZE):
-        left = [(bits >> (row * 3 + column)) & 1 for column in range(3)]
-        grid.append("".join(str(cell) for cell in left + left[1::-1]))
-    return colour, grid
+    colour = module.hex_colour(module.identicon_colour(key))
+    grid = ["".join("1" if cell else "0" for cell in row)
+            for row in module.identicon_grid(key)]
+
+    identity = (colour, grid)
+    _IDENTITY_CACHE[directory] = identity
+    return identity
 
 
 def _disambiguate(entries):

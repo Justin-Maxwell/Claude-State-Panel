@@ -206,25 +206,6 @@ class TestLabels(unittest.TestCase):
         self.assertIn("Sentry-MCP", labels)
 
 
-def _checkout(case, origin_url, name="Thing"):
-    """A throwaway directory that looks like a checkout to the evaluator.
-
-    Only `.git/config` is written -- the evaluator reads that file directly
-    rather than shelling out, so a real `git init` would be slower and would
-    make the suite depend on git being installed. Cleaned up with the case.
-    """
-    root = tempfile.mkdtemp()
-    case.addCleanup(shutil.rmtree, root, ignore_errors=True)
-    checkout = os.path.join(root, name)
-    os.makedirs(os.path.join(checkout, ".git"))
-    body = "[core]\n\trepositoryformatversion = 0\n"
-    if origin_url:
-        body += f'[remote "origin"]\n\turl = {origin_url}\n\tfetch = +refs/heads/*\n'
-    with open(os.path.join(checkout, ".git", "config"), "w", encoding="utf-8") as handle:
-        handle.write(body)
-    return checkout
-
-
 class TestProjectIdentity(unittest.TestCase):
     """Identity is derived, never configured -- Justin's constraint, 2026-08-16:
     "I wouldn't want to force users to assign project colours." Everything here
@@ -244,65 +225,42 @@ class TestProjectIdentity(unittest.TestCase):
         self.assertEqual(evaluator.project_identity(path),
                          reloaded.project_identity(path))
 
-    def test_identity_is_keyed_on_the_repository(self):
-        """Justin's direction, 2026-08-17: the repo name is vastly more portable
-        than the path."""
-        checkout = _checkout(self, "https://github.com/Justin-Maxwell/Thing.git")
-        self.assertEqual("github.com/justin-maxwell/thing",
-                         evaluator.identity_key(checkout))
+    def test_it_derives_nothing_and_delegates_everything(self):
+        """The evaluator holds no derivation of its own. Key resolution and the
+        identicon itself are `identicon/claude-state-identicon.py`, tested in
+        `test_identicon.py`; all this asserts is that the adapter returns that
+        module's answer rather than one of its own.
 
-    def test_the_same_repo_cloned_anywhere_has_one_identity(self):
-        """The whole point. Two clones of one repository, at unrelated paths,
-        are one project and must look identical."""
-        url = "https://github.com/Justin-Maxwell/Thing.git"
-        here = _checkout(self, url, name="Thing")
-        there = _checkout(self, url, name="somewhere-else")
-        self.assertEqual(evaluator.project_identity(here),
-                         evaluator.project_identity(there))
+        This test exists because for one day it did not. Two implementations
+        disagreed on screen from an identical key -- see findings Q and the
+        merge that brought them together."""
+        identicon = support.load_script(support.IDENTICON, "identicon_under_test")
+        path = str(support.REPO_ROOT)
+        key = identicon.resolve_key(path)[0]
 
-    def test_ssh_and_https_remotes_are_the_same_repository(self):
-        """Same repo, two ways of naming it. A user who switches their remote
-        from https to ssh must not watch every identicon change."""
+        colour, grid = evaluator.project_identity(path)
+        self.assertEqual(identicon.hex_colour(identicon.identicon_colour(key)),
+                         colour)
         self.assertEqual(
-            evaluator.project_identity(
-                _checkout(self, "https://github.com/Justin-Maxwell/Thing.git")),
-            evaluator.project_identity(
-                _checkout(self, "git@github.com:Justin-Maxwell/Thing.git",
-                          name="via-ssh")))
+            ["".join("1" if cell else "0" for cell in row)
+             for row in identicon.identicon_grid(key)],
+            grid)
 
-    def test_a_subdirectory_belongs_to_its_repository(self):
-        """A session opened deeper in the tree is still that project."""
-        checkout = _checkout(self, "https://github.com/Justin-Maxwell/Thing.git")
-        nested = os.path.join(checkout, "evaluator", "deeper")
-        os.makedirs(nested)
-        self.assertEqual(evaluator.identity_key(checkout),
-                         evaluator.identity_key(nested))
+    def test_the_key_is_the_one_the_implementation_resolves(self):
+        identicon = support.load_script(support.IDENTICON, "identicon_under_test")
+        path = str(support.REPO_ROOT)
+        self.assertEqual(identicon.resolve_key(path)[0],
+                         evaluator.identity_key(path))
 
-    def test_a_directory_with_no_repository_falls_back_to_its_path(self):
-        """MarkRight is a real example: a project directory with no `.git` at
-        all. It still needs an identicon."""
-        home = os.path.expanduser("~").rstrip("/")
-        self.assertEqual("Code/Projects/Thing",
-                         evaluator.identity_key(f"{home}/Code/Projects/Thing"))
-        self.assertEqual("/opt/checkouts/Thing",
-                         evaluator.identity_key("/opt/checkouts/Thing"))
-
-    def test_a_repository_with_no_origin_falls_back_to_its_path(self):
-        """`git init` with nothing pushed anywhere is a repository, but not one
-        with a portable name."""
-        checkout = _checkout(self, None)
-        self.assertEqual(evaluator._path_key(checkout),
-                         evaluator.identity_key(checkout))
-
-    def test_an_unreadable_git_config_does_not_raise(self):
-        """An identicon is decoration. Decoration must not be able to take the
-        panel down."""
-        checkout = _checkout(self, "https://github.com/Justin-Maxwell/Thing.git")
-        os.chmod(os.path.join(checkout, ".git", "config"), 0o000)
-        self.addCleanup(os.chmod, os.path.join(checkout, ".git", "config"), 0o644)
-        colour, grid = evaluator.project_identity(checkout)
-        self.assertRegex(colour, r"^#[0-9a-f]{6}$")
-        self.assertEqual(evaluator.IDENTICON_SIZE, len(grid))
+    def test_identity_is_memoised_per_process(self):
+        """`resolve_key` shells out to git, and several sessions routinely share
+        one directory. Without this the evaluator would fork per session per
+        poll to answer a question it had just answered."""
+        path = str(support.REPO_ROOT)
+        evaluator._IDENTITY_CACHE.clear()
+        first = evaluator.project_identity(path)
+        self.assertIn(path, evaluator._IDENTITY_CACHE)
+        self.assertIs(first, evaluator.project_identity(path))
 
     def test_colour_is_a_lowercase_hex_triplet(self):
         colour, _ = evaluator.project_identity("/home/justin/Code/Projects/Thing")
