@@ -7,6 +7,8 @@ session, no Plasma shell, and no network.
 
 import json
 import os
+import shutil
+import tempfile
 import time
 import unittest
 
@@ -204,6 +206,25 @@ class TestLabels(unittest.TestCase):
         self.assertIn("Sentry-MCP", labels)
 
 
+def _checkout(case, origin_url, name="Thing"):
+    """A throwaway directory that looks like a checkout to the evaluator.
+
+    Only `.git/config` is written -- the evaluator reads that file directly
+    rather than shelling out, so a real `git init` would be slower and would
+    make the suite depend on git being installed. Cleaned up with the case.
+    """
+    root = tempfile.mkdtemp()
+    case.addCleanup(shutil.rmtree, root, ignore_errors=True)
+    checkout = os.path.join(root, name)
+    os.makedirs(os.path.join(checkout, ".git"))
+    body = "[core]\n\trepositoryformatversion = 0\n"
+    if origin_url:
+        body += f'[remote "origin"]\n\turl = {origin_url}\n\tfetch = +refs/heads/*\n'
+    with open(os.path.join(checkout, ".git", "config"), "w", encoding="utf-8") as handle:
+        handle.write(body)
+    return checkout
+
+
 class TestProjectIdentity(unittest.TestCase):
     """Identity is derived, never configured -- Justin's constraint, 2026-08-16:
     "I wouldn't want to force users to assign project colours." Everything here
@@ -223,28 +244,65 @@ class TestProjectIdentity(unittest.TestCase):
         self.assertEqual(evaluator.project_identity(path),
                          reloaded.project_identity(path))
 
-    def test_identity_is_keyed_on_the_path_from_home(self):
-        """Justin's direction, 2026-08-17. The home prefix is the same for every
-        project on the machine, so it adds nothing to the hash."""
+    def test_identity_is_keyed_on_the_repository(self):
+        """Justin's direction, 2026-08-17: the repo name is vastly more portable
+        than the path."""
+        checkout = _checkout(self, "https://github.com/Justin-Maxwell/Thing.git")
+        self.assertEqual("github.com/justin-maxwell/thing",
+                         evaluator.identity_key(checkout))
+
+    def test_the_same_repo_cloned_anywhere_has_one_identity(self):
+        """The whole point. Two clones of one repository, at unrelated paths,
+        are one project and must look identical."""
+        url = "https://github.com/Justin-Maxwell/Thing.git"
+        here = _checkout(self, url, name="Thing")
+        there = _checkout(self, url, name="somewhere-else")
+        self.assertEqual(evaluator.project_identity(here),
+                         evaluator.project_identity(there))
+
+    def test_ssh_and_https_remotes_are_the_same_repository(self):
+        """Same repo, two ways of naming it. A user who switches their remote
+        from https to ssh must not watch every identicon change."""
+        self.assertEqual(
+            evaluator.project_identity(
+                _checkout(self, "https://github.com/Justin-Maxwell/Thing.git")),
+            evaluator.project_identity(
+                _checkout(self, "git@github.com:Justin-Maxwell/Thing.git",
+                          name="via-ssh")))
+
+    def test_a_subdirectory_belongs_to_its_repository(self):
+        """A session opened deeper in the tree is still that project."""
+        checkout = _checkout(self, "https://github.com/Justin-Maxwell/Thing.git")
+        nested = os.path.join(checkout, "evaluator", "deeper")
+        os.makedirs(nested)
+        self.assertEqual(evaluator.identity_key(checkout),
+                         evaluator.identity_key(nested))
+
+    def test_a_directory_with_no_repository_falls_back_to_its_path(self):
+        """MarkRight is a real example: a project directory with no `.git` at
+        all. It still needs an identicon."""
         home = os.path.expanduser("~").rstrip("/")
         self.assertEqual("Code/Projects/Thing",
                          evaluator.identity_key(f"{home}/Code/Projects/Thing"))
-        self.assertEqual("Code/Projects/Thing",
-                         evaluator.identity_key(f"{home}/Code/Projects/Thing/"))
-
-    def test_a_path_outside_home_keeps_its_absolute_form(self):
-        """There is nothing to strip, and inventing a second convention for a
-        rare case buys nothing."""
         self.assertEqual("/opt/checkouts/Thing",
                          evaluator.identity_key("/opt/checkouts/Thing"))
 
-    def test_two_checkouts_of_one_project_are_different_projects(self):
-        """The whole relative path is hashed, not the basename -- to anyone
-        looking at the panel these are two different things, and keying on the
-        full path separates them without needing the label disambiguator."""
-        home = os.path.expanduser("~").rstrip("/")
-        self.assertNotEqual(evaluator.project_identity(f"{home}/Code/Projects/Thing"),
-                            evaluator.project_identity(f"{home}/Code/Foreign/Thing"))
+    def test_a_repository_with_no_origin_falls_back_to_its_path(self):
+        """`git init` with nothing pushed anywhere is a repository, but not one
+        with a portable name."""
+        checkout = _checkout(self, None)
+        self.assertEqual(evaluator._path_key(checkout),
+                         evaluator.identity_key(checkout))
+
+    def test_an_unreadable_git_config_does_not_raise(self):
+        """An identicon is decoration. Decoration must not be able to take the
+        panel down."""
+        checkout = _checkout(self, "https://github.com/Justin-Maxwell/Thing.git")
+        os.chmod(os.path.join(checkout, ".git", "config"), 0o000)
+        self.addCleanup(os.chmod, os.path.join(checkout, ".git", "config"), 0o644)
+        colour, grid = evaluator.project_identity(checkout)
+        self.assertRegex(colour, r"^#[0-9a-f]{6}$")
+        self.assertEqual(evaluator.IDENTICON_SIZE, len(grid))
 
     def test_colour_is_a_lowercase_hex_triplet(self):
         colour, _ = evaluator.project_identity("/home/justin/Code/Projects/Thing")

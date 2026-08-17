@@ -177,18 +177,99 @@ _IDENTITY_SATURATION = 0.52
 _IDENTITY_LIGHTNESS = 0.55
 
 
-def identity_key(cwd):
-    """The string a project's identity is derived from: its path from home.
+def _git_dir(start):
+    """Nearest `.git` at or above `start`, resolved through worktree pointers.
 
-    `Code/Projects/Glyph-Hunter`, not `/home/justin/Code/Projects/Glyph-Hunter`.
-    The home prefix is identical for every project on the machine, so it adds
-    nothing to the hash while tying the result to one user's home directory for
-    no gain. Paths outside home keep their absolute form -- there is nothing to
-    strip, and they are rare enough not to warrant a second convention.
+    A plain checkout has `.git` as a directory. A worktree or submodule has it
+    as a *file* holding `gitdir: <path>`; the directory that points at usually
+    carries a `commondir` naming the shared git directory, which is the one
+    holding `config`. Following both means a worktree reports the same repo as
+    its parent checkout, which is the intent -- they are one project.
+    """
+    path = os.path.abspath(start)
+    while True:
+        candidate = os.path.join(path, ".git")
+        if os.path.isdir(candidate):
+            return candidate
+        if os.path.isfile(candidate):
+            try:
+                with open(candidate, encoding="utf-8", errors="replace") as handle:
+                    pointer = handle.read().strip()
+            except OSError:
+                return None
+            if not pointer.startswith("gitdir:"):
+                return None
+            resolved = os.path.join(path, pointer[len("gitdir:"):].strip())
+            common = os.path.join(resolved, "commondir")
+            try:
+                with open(common, encoding="utf-8", errors="replace") as handle:
+                    resolved = os.path.join(resolved, handle.read().strip())
+            except OSError:
+                pass
+            return os.path.abspath(resolved)
+        parent = os.path.dirname(path)
+        if parent == path:
+            return None
+        path = parent
 
-    The whole relative path is used, not the basename: two checkouts of the
-    same project are different projects to anyone looking at the panel, and
-    keying on the full path separates them without needing a disambiguator.
+
+def _origin_url(git_dir):
+    """The `origin` remote's URL, read straight from `config`.
+
+    Parsed rather than shelled out to `git`: this runs once per session per
+    poll, and a file read costs nothing where a subprocess would. It also means
+    the panel works on a machine with no `git` on PATH.
+    """
+    section = None
+    try:
+        with open(os.path.join(git_dir, "config"), encoding="utf-8", errors="replace") as handle:
+            for line in handle:
+                stripped = line.strip()
+                if stripped.startswith("["):
+                    section = stripped
+                elif section == '[remote "origin"]' and stripped.startswith("url"):
+                    _, _, value = stripped.partition("=")
+                    return value.strip() or None
+    except OSError:
+        return None
+    return None
+
+
+def _repo_name(url):
+    """A remote URL reduced to `host/owner/repo`.
+
+    `https://github.com/Justin-Maxwell/Repo.git` and
+    `git@github.com:Justin-Maxwell/Repo.git` are the same repository and must
+    give the same identity, so the scheme, any `user@`, and the `.git` suffix
+    all come off. The host stays: a GitHub repo and a GitLab mirror of the same
+    name are different remotes and should look different.
+
+    Lower-cased, because portability is the whole point of keying on the repo
+    and the same repository is routinely cloned with different capitalisation.
+    The cost is that two repos differing only in case would collide.
+    """
+    text = (url or "").strip().rstrip("/")
+    for scheme in ("ssh://", "git+ssh://", "https://", "http://", "git://", "file://"):
+        if text.startswith(scheme):
+            text = text[len(scheme):]
+            break
+    head, separator, tail = text.partition("@")
+    if separator and "/" not in head:
+        text = tail
+    head, separator, tail = text.partition(":")
+    if separator and "/" not in head:
+        text = f"{head}/{tail}"
+    if text.endswith(".git"):
+        text = text[:-4]
+    return text.strip("/").lower() or None
+
+
+def _path_key(cwd):
+    """Fallback identity for a directory that is not a repository.
+
+    The path from home -- `Code/Projects/Thing` -- because the home prefix is
+    the same for every project on the machine and contributes nothing. Paths
+    outside home keep their absolute form.
     """
     path = (cwd or "").rstrip("/")
     home = os.path.expanduser("~").rstrip("/")
@@ -197,6 +278,37 @@ def identity_key(cwd):
     if path.startswith(home + "/"):
         return path[len(home) + 1:]
     return path
+
+
+def identity_key(cwd):
+    """The string a project's identity is derived from: its repository.
+
+    Justin's direction, 2026-08-17 -- the repo name is vastly more portable
+    than any path. The same repository cloned to `~/Code/Projects/Thing` on one
+    machine and `~/src/thing` on another is one project and gets one identicon;
+    a path key would call them two.
+
+    The consequence, stated rather than discovered later: two checkouts of the
+    same repository now share an identicon, where keying on the path separated
+    them. That is the right answer -- they are the same project -- and the
+    label disambiguator already distinguishes them in the popup.
+
+    A directory with no repository, or a repository with no `origin`, falls
+    back to the path. Nothing here raises: an identicon is decoration, and a
+    decoration must not be able to take the panel down.
+    """
+    path = (cwd or "").rstrip("/")
+    if not path:
+        return ""
+    try:
+        git_dir = _git_dir(path)
+        if git_dir:
+            name = _repo_name(_origin_url(git_dir))
+            if name:
+                return name
+    except OSError:
+        pass
+    return _path_key(path)
 
 
 def project_identity(cwd):
