@@ -16,6 +16,8 @@ it and regenerate the file.
 """
 
 import json
+import shutil
+import subprocess
 import unittest
 
 import support
@@ -73,6 +75,29 @@ class TestColourConformance(unittest.TestCase):
         would be a specification neither implements."""
         self.assertEqual(0.7, identicon.SATURATION)
         self.assertEqual(0.5, identicon.LIGHTNESS)
+
+
+class TestTheVectorsAreStillWhatTheReferenceProduces(unittest.TestCase):
+    """Re-derive the vectors from the vendored library and compare.
+
+    Without this, `vectors.json` is a file the repository asserts is reference
+    output. With it, that assertion is checked on every run against the library
+    itself -- which is the only reason the library is committed rather than
+    fetched. A reference that must be downloaded is a reference that can vanish,
+    and one did vanish during the week this was written.
+    """
+
+    HARNESS = support.REPO_ROOT / "identicon" / "reference" / "js-vectors.js"
+
+    @unittest.skipUnless(shutil.which("node"), "node is not installed")
+    def test_the_reference_still_produces_the_pinned_vectors(self):
+        result = subprocess.run(
+            ["node", str(self.HARNESS)] + [vector["key"] for vector in VECTORS],
+            capture_output=True, text=True, timeout=60,
+            cwd=str(self.HARNESS.parent),
+        )
+        self.assertEqual(0, result.returncode, result.stderr)
+        self.assertEqual(VECTORS, json.loads(result.stdout))
 
 
 class TestBackgroundIsADeliberateDivergence(unittest.TestCase):

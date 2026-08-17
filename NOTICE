@@ -10,9 +10,17 @@ later version. See LICENSE for the full text.
 DESIGN ATTRIBUTION
 ==================
 
-No third-party code is vendored in this project. The offline scope removed
-every reason to. What follows credits design inspiration only, with the licence
-status of each source stated plainly.
+One third-party library is vendored, under identicon/reference/vendor/, and it
+is named in full below. Everything else here credits design inspiration only,
+with the licence status of each source stated plainly.
+
+This file previously said that nothing was vendored, on the grounds that "the
+offline scope removed every reason to". That stopped being true when the
+identicon acquired an external conformance reference: without the library in
+the tree, identicon/vectors.json is a file this repository merely asserts is
+reference output, and nobody can check it. Vendoring is what makes the
+assertion falsifiable. The vendored copy is a *test fixture* -- it is never
+imported by the evaluator, the plasmoid or the CLI, and it ships in nothing.
 
 Glicio/claude-waybar-status
   Per-session state model and the sticky-slot idea.
@@ -34,14 +42,23 @@ fuziontech/claude-quota-widget
   MIT licensed.
   Referenced for the justfile plasmoid development loop. No code copied.
 
-stewartlord/identicon.js
+stewartlord/identicon.js  -- VENDORED
   BSD-2-Clause licensed. Copyright (c) 2018, Stewart Lord.
-  The normative reference for the project identicon. Executed, unmodified and
-  unvendored, to generate identicon/vectors.json, which tests/test_conformance.py
-  asserts against. Its grid and colour rules were transliterated into Python; no
-  code was copied. Fetched on demand per identicon/reference/README.md and
-  git-ignored. If this library is ever vendored, its copyright notice,
-  conditions list and disclaimer must be reproduced here in full.
+  Vendored at identicon/reference/vendor/, unmodified, from upstream commit
+  7063ae16142fd39d3563699b9af2dc321326ff52 (2022-03-24). The full licence text
+  is retained verbatim at identicon/reference/vendor/LICENSE, as BSD-2-Clause
+  requires for redistribution in source form; its copyright notice, conditions
+  list and disclaimer are reproduced there in full and must stay with the files.
+
+  It is the normative reference for the project identicon. It generates
+  identicon/vectors.json, and tests/test_conformance.py re-runs it on every
+  test run to confirm the pinned vectors are still what it produces. Its grid
+  and colour rules were transliterated into Python in
+  identicon/claude-state-identicon.py; no code was copied into that file.
+
+  Vendored rather than fetched because a downloaded reference can vanish -- one
+  did, during the week this was written -- and a conformance file nobody can
+  re-derive is indistinguishable from a file we made up.
 
 dgraham/identicon
   MIT licensed.

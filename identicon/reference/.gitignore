@@ -1,6 +1,0 @@
-# The reference library is fetched, never committed -- NOTICE states that no
-# third-party code is vendored, and that must stay true. See README.md.
-identicon.js
-pnglib.js
-LICENSE
-node_modules/

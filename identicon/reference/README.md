@@ -5,7 +5,12 @@ the point of regenerating it: an earlier attempt was abandoned because pinning
 vectors for a derivation we invented "proved only that the code agrees with
 itself".
 
-Two independent implementations are used, and neither is vendored.
+The reference is vendored, at `vendor/`, unmodified, from upstream commit
+`7063ae16142fd39d3563699b9af2dc321326ff52`. `tests/test_conformance.py` re-runs
+it against every pinned vector on every test run, so `vectors.json` is checked
+rather than trusted. Without the library in the tree that check is impossible
+and the file is only an assertion — and a downloaded reference can disappear,
+as `drhus/awesome-identicons` did during the week this was written.
 
 ## The reference
 
@@ -40,13 +45,21 @@ not have and does not need.
 
 ## Regenerating
 
-The library is not committed. Fetch it beside the harness, then run:
+Everything needed is committed. Requires only node:
 
 ```
 cd identicon/reference
-gh api repos/stewartlord/identicon.js/contents/identicon.js --jq .content | base64 -d > identicon.js
-gh api repos/stewartlord/identicon.js/contents/pnglib.js   --jq .content | base64 -d > pnglib.js
 node js-vectors.js github.com/justin-maxwell/claude-state-panel
 ```
 
-`identicon.js` and `pnglib.js` are listed in `.gitignore` for this directory.
+To rebuild the whole pinned set, pass every key in `../vectors.json` and write
+the output back over it. The conformance test will then be asserting against
+freshly generated output, so a mistake there fails loudly rather than quietly
+agreeing with itself.
+
+## Updating the vendored library
+
+`vendor/` is upstream, unmodified. If it is ever refreshed, update the commit
+hash in `NOTICE` and here, regenerate `vectors.json`, and expect every
+identicon to change — the vectors are the specification, so a reference bump is
+a visual change to every project's icon, not a maintenance detail.

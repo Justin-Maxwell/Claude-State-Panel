@@ -1,9 +1,10 @@
 // Generate identicon conformance vectors from stewartlord/identicon.js.
 //
-// This file is ours. The library it drives is NOT vendored -- see README.md in
-// this directory for how to fetch it. That keeps NOTICE's "no third-party code
-// is vendored" true, and keeps the vectors reproducible by anyone who wants to
-// check them rather than trust them.
+// This file is ours; the library under vendor/ is not. It is committed rather
+// than fetched so that vectors.json can be re-derived by anyone, offline, for
+// as long as this repository exists -- a reference that has to be downloaded
+// is a reference that can disappear, and one did during the week this was
+// written.
 //
 // SVG rather than PNG, because the grid is then recoverable exactly: the
 // library emits one <rect> per *foreground* cell inside a <g> carrying the
@@ -13,7 +14,7 @@
 //   node js-vectors.js <key> [key...]
 
 const crypto = require('crypto');
-const Identicon = require('./identicon.js');
+const Identicon = require('./vendor/identicon.js');
 
 const CELL = 10;
 
