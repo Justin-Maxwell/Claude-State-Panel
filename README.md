@@ -110,6 +110,17 @@ premise still holds. Finding O.
 
 Neither is a reason to stop; both are reasons not to start Phase 1 on autopilot.
 
+What a glyph is allowed to say is specified in `docs/state-vocabulary.md`, which
+supersedes the spec's glyph and colour table: one theme role per state, tool
+classes, error kinds, an intensity ramp in place of a binary stale flag,
+ordinals where a project has several live sessions, and a project hue rule. It
+is deliberately maximal and carries its own collapse order.
+
+How a project's identicon is derived is specified in
+`docs/project-identicon-spec.md`, and `identicon/claude-state-identicon.py` is
+the one implementation of it. See [Identicons](#identicons) below for which
+convention that follows and why the evaluator does not compute its own.
+
 Resolved assumptions accumulate in `docs/findings.md`; observed hook sequences
 in `docs/hook-events.md`. The specification itself is **not yet in this repo** —
 it lives at `~/Downloads/claude-session-panel-spec.md` and still carries the
@@ -179,6 +190,63 @@ anything, so open question 10 is dissolved rather than answered — there is no
 interactivity test to get wrong. The accepted cost is that a session opened but
 not yet typed into is invisible; it is not waiting on you, and you are looking
 at it. Findings H and K.
+
+## Project identicons
+
+A deterministic visual identity for a project, derived from the project and
+nothing else, so that independent tools agree without coordinating.
+`docs/project-identicon-spec.md` is the shared contract — chiefly the key, which
+is the part that decides whether two tools agree. Three consumers so far:
+
+**On every return of control.** A hook prints the identicon when a turn ends or
+control comes back to you — `Stop`, `PermissionRequest`, `Elicitation`,
+`SessionEnd`. The icon and nothing else: no project name, no key. Konsole takes
+the iTerm2 inline image protocol, so it gets the actual PNG, base64 in an escape
+sequence, at the full 5×5; terminals that can't are given a half-block
+approximation instead. `Notification` is left out on purpose: `idle_prompt`
+fires exactly 60s after `Stop`, so registering both would print the same mark
+twice a minute apart.
+
+```
+just identicon-emit     # see it
+just identicon-hooks    # the registration to paste, checked against the probe first
+```
+
+**In the panel**, as the project hue channel beneath each state glyph. See
+`docs/state-vocabulary.md`.
+
+**On a Konsole tab**, by the two compile-free routes below.
+
+The key is the **git remote**, normalised to `host/owner/repo` — not the working
+directory, because the desktop app gives each parallel session its own git
+worktree and a path key would give each of them a different identity.
+
+### Konsole
+
+The panel answers *is anything waiting on me*; a Konsole tab marker answers
+*which project is this tab*. Applied over Konsole's session D-Bus interface, by
+two routes that need no compilation:
+
+- **badge** — a coloured one or two character label over the terminal view.
+- **profile** — a generated profile carrying an `Icon=`, giving a real tab-bar
+  icon.
+
+The route originally scoped, an identicon on the session toolbar, is blocked:
+Konsole installs no plugin headers, so a `IKonsolePlugin` cannot be built out of
+tree at all. Finding E in `docs/findings.md`.
+
+Manual for now — nothing is wired to a hook.
+
+```
+just identicon-show        # derived names and a terminal preview
+just identicon-install     # into the user icon theme
+just identicon-probe       # which D-Bus methods this Konsole exposes
+just identicon-demo        # probe, then exercise both routes on this tab
+just identicon-uninstall
+```
+
+Full write-up, with the upstream evidence for every claim, in
+`docs/konsole-identicons.md`.
 
 ## Naming
 
