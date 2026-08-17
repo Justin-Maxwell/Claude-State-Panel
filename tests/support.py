@@ -73,8 +73,24 @@ def load_evaluator():
 # docs/state-vocabulary.md, which supersedes the spec 5 glyph and colour table.
 # Held here so the vocabulary is checked rather than merely written down.
 
+# The *proposed* vocabulary and its collapse order, from the document. This is
+# deliberately not `evaluator.PRIORITY`, which is the five states the evaluator
+# actually emits today. Two names for two different things: one is a design not
+# yet built, the other is shipping behaviour. The merge that brought these
+# together dropped this list silently by taking main's side of a region both
+# branches had restructured, which is why it now says which is which.
+VOCABULARY_PRIORITY = [
+    "error",
+    "waiting-permission",
+    "waiting-elicitation",
+    "waiting-input",
+    "tool",
+    "thinking",
+    "starting",
+]
+
 # The nine text colour roles Kirigami actually exposes. Verified against
-# src/platform/platformtheme.h at KDE/kirigami@master, finding H.
+# src/platform/platformtheme.h at KDE/kirigami@master, finding R.
 KIRIGAMI_TEXT_ROLES = {
     "textColor",
     "disabledTextColor",

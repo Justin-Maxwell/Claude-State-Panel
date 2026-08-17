@@ -17,7 +17,7 @@ import support
 
 class TestRolesCoverEveryState(unittest.TestCase):
     def test_every_state_has_a_role(self):
-        self.assertEqual(sorted(support.STATE_ROLES), sorted(support.PRIORITY))
+        self.assertEqual(sorted(support.STATE_ROLES), sorted(support.VOCABULARY_PRIORITY))
 
     def test_no_role_is_used_twice(self):
         roles = list(support.STATE_ROLES.values())
@@ -49,7 +49,7 @@ class TestRolesCoverEveryState(unittest.TestCase):
 
 class TestGlyphsAreDistinguishable(unittest.TestCase):
     def test_every_state_has_a_glyph(self):
-        self.assertEqual(sorted(support.STATE_GLYPHS), sorted(support.PRIORITY))
+        self.assertEqual(sorted(support.STATE_GLYPHS), sorted(support.VOCABULARY_PRIORITY))
 
     def test_state_glyphs_are_distinct(self):
         glyphs = list(support.STATE_GLYPHS.values())
@@ -160,12 +160,12 @@ class TestErrorKinds(unittest.TestCase):
 
 class TestIntensity(unittest.TestCase):
     def test_attention_states_are_real_states(self):
-        self.assertTrue(support.ATTENTION_STATES <= set(support.PRIORITY))
+        self.assertTrue(support.ATTENTION_STATES <= set(support.VOCABULARY_PRIORITY))
 
     def test_attention_states_are_the_top_of_the_priority_order(self):
         # They do not ramp, so they must be exactly the highest-priority block;
         # a gap would mean a ramping state outranks a non-ramping one.
-        top = support.PRIORITY[:len(support.ATTENTION_STATES)]
+        top = support.VOCABULARY_PRIORITY[:len(support.ATTENTION_STATES)]
         self.assertEqual(set(top), support.ATTENTION_STATES)
 
     def test_the_floor_leaves_a_stale_session_readable(self):
@@ -199,7 +199,7 @@ class TestVocabularyMatchesTheDocument(unittest.TestCase):
         self.text = (support.REPO_ROOT / "docs" / "state-vocabulary.md").read_text()
 
     def test_every_state_is_named_in_the_document(self):
-        for state in support.PRIORITY:
+        for state in support.VOCABULARY_PRIORITY:
             with self.subTest(state=state):
                 self.assertIn(state, self.text)
 
