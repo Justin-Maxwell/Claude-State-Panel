@@ -113,7 +113,7 @@ class TestTheCommittedInstruction(unittest.TestCase):
     """
 
     INSTRUCTIONS = support.REPO_ROOT / "CLAUDE.md"
-    ARTIFACT = support.REPO_ROOT / ".identicon" / "png.b64"
+    ARTIFACT = support.REPO_ROOT / ".identicon" / "repository-identicon.png"
 
     def literal(self):
         found = MARKDOWN_IMAGE_ANYWHERE.findall(self.INSTRUCTIONS.read_text())
@@ -127,7 +127,13 @@ class TestTheCommittedInstruction(unittest.TestCase):
                          r"(?i)last line of every response")
 
     def test_the_literal_matches_the_committed_artifact(self):
-        self.assertEqual(self.ARTIFACT.read_text().strip(), self.literal())
+        """The literal is base64 of the committed PNG, derived here rather than
+        compared against a stored copy. There used to be a `.b64` file holding
+        exactly these characters; it was a second copy of one image, free to
+        disagree with the first, and was dropped once a real PNG existed to
+        derive it from."""
+        self.assertEqual(base64.b64encode(self.ARTIFACT.read_bytes()).decode("ascii"),
+                         self.literal())
 
     def test_the_literal_matches_a_fresh_derivation(self):
         message = json.loads(emit().stdout)["systemMessage"]
@@ -142,30 +148,32 @@ class TestTheCommittedInstruction(unittest.TestCase):
         if settings.exists():
             self.assertNotIn("identicon", settings.read_text())
 
-    def test_the_artifact_is_bare_base64_with_no_wrapper(self):
-        text = self.ARTIFACT.read_text()
-        self.assertEqual(1, len(text.strip().splitlines()))
-        self.assertRegex(text.strip(), r"^[A-Za-z0-9+/]+=*$")
-        self.assertEqual(b"\x89PNG\r\n\x1a\n", base64.b64decode(text.strip())[:8])
+    def test_the_committed_artifact_is_a_png(self):
+        self.assertEqual(b"\x89PNG\r\n\x1a\n", self.ARTIFACT.read_bytes()[:8])
 
 
 class TestTheArtifactSetAgreesWithItself(unittest.TestCase):
-    """Four files, one mark. Nothing outside this suite would ever notice them
-    diverging, because each has a different consumer and no consumer reads two.
+    """One mark, several files. Nothing outside this suite would ever notice
+    them diverging, because each has a different consumer and no consumer reads
+    two.
 
     That is exactly the shape of the failure this repository has already had
     once: a write path correct in storage and unusable end to end, green for
     four minor versions because nothing read it back. So each artifact is read
-    back here, through the same door its real consumer uses -- the base64 gets
-    decoded, the SVG gets its geometry compared against the raster's pixels,
-    and the colour is checked against what is actually painted.
+    back here, through the same door its real consumer uses -- the SVG gets its
+    geometry compared against the raster's pixels, and the colour is checked
+    against what is actually painted.
+
+    Each filename repeats the directory deliberately. The directory is context,
+    and context does not survive a file being copied out or fetched from a raw
+    URL; `icon.png` on a desktop says nothing, where this still does.
     """
 
     DIRECTORY = support.REPO_ROOT / ".identicon"
-    B64 = DIRECTORY / "png.b64"
-    PNG = DIRECTORY / "icon.png"
-    SVG = DIRECTORY / "icon.svg"
-    COLOUR = DIRECTORY / "colour"
+    STEM = "repository-identicon"
+    PNG = DIRECTORY / f"{STEM}.png"
+    SVG = DIRECTORY / f"{STEM}.svg"
+    COLOUR = DIRECTORY / f"{STEM}.colour"
 
     def opaque_pixels(self):
         """{(x, y): (r, g, b)} for every non-transparent pixel of the PNG.
@@ -194,14 +202,15 @@ class TestTheArtifactSetAgreesWithItself(unittest.TestCase):
         return pixels
 
     def test_every_artifact_is_present(self):
-        for path in (self.B64, self.PNG, self.SVG, self.COLOUR):
+        for path in (self.PNG, self.SVG, self.COLOUR):
             self.assertTrue(path.exists(), f"{path} is missing")
 
-    def test_the_base64_is_the_png(self):
-        """Two encodings of one image, which is the only thing that makes it
-        safe to have both."""
-        self.assertEqual(base64.b64encode(self.PNG.read_bytes()).decode("ascii"),
-                         self.B64.read_text().strip())
+    def test_no_superseded_artifact_survives_beside_its_replacement(self):
+        """Carrying both leaves every consumer guessing which is current, and
+        the stale one goes on looking authoritative forever."""
+        for stale in ("png.b64", "icon.png", "icon.svg", "colour"):
+            self.assertFalse((self.DIRECTORY / stale).exists(),
+                             f"{stale} was superseded but is still here")
 
     def test_the_svg_covers_exactly_the_pixels_the_png_paints(self):
         """Same mark, not merely the same pattern -- the margin has to match
@@ -259,7 +268,7 @@ class TestTheArtifactSetAgreesWithItself(unittest.TestCase):
     def test_each_text_artifact_ends_with_exactly_one_newline(self):
         """So each is a well-formed text file and `$(cat ...)` still yields it
         clean -- the shell strips exactly one."""
-        for path in (self.B64, self.SVG, self.COLOUR):
+        for path in (self.SVG, self.COLOUR):
             text = path.read_text()
             self.assertTrue(text.endswith("\n"), f"{path} has no trailing newline")
             self.assertFalse(text.endswith("\n\n"), f"{path} has a blank line at the end")
@@ -387,7 +396,7 @@ class TestThePortableInstallerAgrees(unittest.TestCase):
         for path, content in before.items():
             self.assertEqual(content, path.read_bytes())
 
-    ARTIFACT = support.REPO_ROOT / ".identicon" / "png.b64"
+    ARTIFACT = support.REPO_ROOT / ".identicon" / "repository-identicon.png"
     INSTRUCTIONS = support.REPO_ROOT / "CLAUDE.md"
 
 

@@ -16,10 +16,14 @@ usable with no parsing at all:
 
 | file | for |
 |---|---|
-| `.identicon/png.b64` | the literal above; a `data:` URI cannot reference a path |
-| `.identicon/icon.png` | a README, or anywhere that refuses SVG |
-| `.identicon/icon.svg` | a README on a forge that renders it; anything scalable |
-| `.identicon/colour` | `#rrggbb`, for a prompt, a badge, or a theme |
+| `.identicon/repository-identicon.png` | a README, or anywhere that refuses SVG |
+| `.identicon/repository-identicon.svg` | a README on a forge that renders it; anything scalable |
+| `.identicon/repository-identicon.colour` | `#rrggbb`, for a prompt, a badge, or a theme |
+
+Each name repeats the directory on purpose, so a file still says what it is once
+it has been copied somewhere else. The literal above is base64 of the PNG — the
+one form no file can provide, since a `data:` URI carries its bytes rather than
+referencing a path.
 
 `tests/test_turn_identicon.py` fails if any of them disagree with each other or
 with a fresh derivation, so do not edit any by hand — regenerate the set with
