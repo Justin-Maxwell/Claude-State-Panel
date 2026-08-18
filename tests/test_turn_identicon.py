@@ -126,6 +126,14 @@ class TestTheCommittedInstruction(unittest.TestCase):
         self.assertRegex(self.INSTRUCTIONS.read_text(),
                          r"(?i)last line of every response")
 
+    def test_the_instruction_also_covers_asking_a_question(self):
+        """A turn that ends in a question may never reach a turn-end, so it is
+        the turn most likely to lose the mark — and the one where the reader is
+        being asked to stop and decide, and which project is asking is part of
+        the question."""
+        self.assertRegex(self.INSTRUCTIONS.read_text(),
+                         r"(?i)before asking")
+
     def test_the_literal_matches_the_committed_artifact(self):
         """The literal is base64 of the committed PNG, derived here rather than
         compared against a stored copy. There used to be a `.b64` file holding

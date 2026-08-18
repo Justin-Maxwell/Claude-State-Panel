@@ -1,9 +1,16 @@
 # Claude-State-Panel
 
-## End every response with this repository's identicon
+## Sign every response with this repository's identicon
 
 Emit this line, verbatim, as the last line of every response in this
 repository. Nothing after it.
+
+**Also emit it immediately before asking anything** — as the last line of the
+text preceding a question, including before a tool call that puts a question to
+the user. A turn that ends in a question may never reach a turn-end at all, so
+it is both the turn most likely to lose the mark and the one where the reader
+most needs it: they are being asked to stop and decide, and which project is
+asking is part of the question.
 
 ![](data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAABYAAAAWCAYAAADEtGw7AAAAMklEQVR42mNgoCdQm3TzPzImVX7U4FGDB8Jgsl1ASP+owVSLrFGDqZ+uR8sKqqV7igAAJiPDEHA0udMAAAAASUVORK5CYII=)
 
