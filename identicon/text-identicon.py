@@ -64,8 +64,14 @@ Unicode 16 or later, so the literal is checkable rather than merely asserted.
 
 **The colour, in emoji.** A pure function of the colour: `#rrggbb` in, three
 emoji out. Nothing else is consulted -- not the key, not the digest, not the
-grid. Two projects sharing a colour share a triple, which is harmless, because
-the grid is what carries identity.
+grid. That is worth keeping rather than incidental: `.colour` is a shipped
+artifact, and a consumer holding only a hex string can compute the right triple
+without being able to re-resolve the key.
+
+Two projects with the identical colour still share a triple. Two projects with
+*similar* colours no longer do, which is the case that actually arises -- see
+`arrange`, where the choice of squares carries the colour and the order they are
+laid out in carries identity.
 
 The palette is anchored on the Unicode *names*, and nothing here reads the
 local system. LARGE BLUE SQUARE is blue, so it is `#0000FF`, whatever any
@@ -83,12 +89,18 @@ A consequence worth having: every canonical colour maps to three of its own
 square, with no special case in the code.
 
 The nearest single colour is used twice. Choosing freely from all 165 mixtures
-minimises error but reads badly, because the eye does not average three large
-squares -- it reads the majority. Yellow-green `#d5d926` is closest to
-RED YELLOW GREEN, a muddle; constraining it to YELLOW YELLOW BLACK costs 0.02
-mean dE across the hue circle and is obviously yellow. Measured over the
-identicon's 256 hues the constraint also shortens the longest run of a single
-triple from 36 to 29 degrees, so legibility is not paid for in spread.
+-- every multiset of three drawn from nine squares, C(11,3) -- minimises error
+but reads badly, because the eye does not average three large squares: it reads
+the majority. Yellow-green `#d5d926` is closest to RED YELLOW GREEN, a muddle;
+constraining it to YELLOW YELLOW BLACK costs 0.02 mean dE across the hue circle
+and is obviously yellow.
+
+Measured over the identicon's whole 1074-colour gamut, the unconstrained search
+is better on fidelity and *worse* on spread -- 0.0393 mean dE against 0.0597,
+but 16.5 effective identifiers against 17.5. Both are answering one question
+about a one-dimensional gamut, so neither can escape it. Spread comes from
+`arrange` instead, which answers a different question and costs the first
+nothing.
 
 Averaging is in linear light, which is what optical mixing does, and compared
 in Oklab, which is near enough perceptually uniform for Euclidean distance to
@@ -98,6 +110,8 @@ from, is not, and clusters badly in the greens.
 Standard library only.
 """
 
+import hashlib
+import itertools
 import math
 
 # ---------------------------------------------------------------------------
@@ -279,25 +293,88 @@ def triple_indices(rgb):
     return tuple(sorted((base, base, best_odd)))
 
 
+def arrange(indices, rgb):
+    """Order the chosen squares, deterministically, from the colour alone.
+
+    `triple_indices` picks *which* squares; this picks the order they are laid
+    out in, and the two carry different information.
+
+    **Why order at all.** Which squares to use is a question about fidelity, and
+    fidelity is what limits spread: neighbouring colours must choose the same
+    squares, or the choice would not be tracking the colour. Measured over the
+    whole gamut that leaves about 17 distinguishable triples, and the arithmetic
+    is unforgiving -- eight projects collide 85% of the time. Choosing squares
+    more cleverly cannot help. Selecting freely from all 165 combinations rather
+    than constraining to a majority *improves* mean error to 0.0393 from 0.0597
+    and yet leaves spread slightly worse, at 16.5 effective against 17.5,
+    because both are answering the same question about the same one-dimensional
+    gamut.
+
+    Order answers a different question, and costs nothing to the first. The same
+    three squares in a different arrangement are the same colours, mixing to the
+    same result, named by the same Unicode names: no arrangement renders the
+    colour worse than another. So it is free to carry identity, and it roughly
+    triples the spread -- 67 distinct arrangements, 49.8 effective.
+
+    **Why the hash is of the colour and not of the key.** It keeps the triple a
+    pure function of the colour, which is a property worth having rather than a
+    detail: `.identicon/repository-identicon.colour` is a shipped artifact, and
+    a consumer holding only `#2692d9` can still compute the right triple. Taking
+    the order from the digest or the grid would make that file insufficient and
+    the triple derivable only by something able to re-resolve the key.
+
+    It also fixes the actual failure mode rather than diluting it. The problem
+    was never poorly spread colours; it was that *adjacent* colours share a
+    multiset. Hashing decorrelates neighbours -- 66.4% of adjacent gamut colours
+    now differ -- which is why `#2692d9` and `#2695d9`, three units apart in one
+    channel, come out as green-blue-blue and blue-blue-green.
+
+    The cost, stated plainly: the mapping is no longer monotonic in hue. A
+    triple no longer hints at where on the wheel a colour sits. That signal was
+    weak and is traded for a much stronger one.
+    """
+    options = sorted(set(itertools.permutations(indices)))
+    digest = hashlib.md5(hex_colour(rgb).encode("utf-8")).hexdigest()
+    return options[int(digest, 16) % len(options)]
+
+
+def hex_colour(rgb):
+    """`#rrggbb`. The exact spelling hashed by `arrange`, so it is fixed here
+    rather than assumed to match some caller's formatting."""
+    return "#{:02x}{:02x}{:02x}".format(*rgb)
+
+
+def triple(rgb):
+    """The three PALETTE indices for `rgb`, in the order they are laid out."""
+    return arrange(triple_indices(rgb), rgb)
+
+
 def emoji_triple(rgb):
     """The three emoji for `rgb`, as one string of three characters."""
-    return "".join(PALETTE[i][0] for i in triple_indices(rgb))
+    return "".join(PALETTE[i][0] for i in triple(rgb))
 
 
 def triple_names(rgb):
-    """The three colour names for `rgb`, ascending by palette order."""
-    return tuple(PALETTE[i][1] for i in triple_indices(rgb))
+    """The three colour names for `rgb`, in laid-out order."""
+    return tuple(PALETTE[i][1] for i in triple(rgb))
 
 
 def triple_detail(rgb):
-    """Everything about the choice, for tests and for explaining a result."""
+    """Everything about the choice, for tests and for explaining a result.
+
+    `indices` is the multiset the fidelity search chose; `arranged` is the order
+    it is laid out in. Both are reported because they answer different
+    questions, and a result that looks wrong is usually wrong in only one.
+    """
     indices = triple_indices(rgb)
+    arranged = arrange(indices, rgb)
     mix = _mix(indices)
     target = _oklab(tuple(_linear(v) for v in rgb))
     return {
         "indices": indices,
-        "emoji": "".join(PALETTE[i][0] for i in indices),
-        "names": tuple(PALETTE[i][1] for i in indices),
+        "arranged": arranged,
+        "emoji": "".join(PALETTE[i][0] for i in arranged),
+        "names": tuple(PALETTE[i][1] for i in arranged),
         "base": PALETTE[nearest_square(rgb)][1],
         "mix_hex": "#{:02x}{:02x}{:02x}".format(*(_encode(v) for v in mix)),
         "delta_e": math.dist(_oklab(mix), target),
@@ -365,6 +442,27 @@ def selftest():
         indices = triple_indices(((value >> 16) & 0xFF,
                                   (value >> 8) & 0xFF, value & 0xFF))
         assert len(set(indices)) <= 2, indices
+
+    # Arranging reorders and never substitutes. The multiset is what carries
+    # the colour, so if arrangement could change it, the mark would stop being
+    # a rendering of the colour at all.
+    for value in range(0, 0x1000000, 0x3F1D7):
+        rgb = ((value >> 16) & 0xFF, (value >> 8) & 0xFF, value & 0xFF)
+        indices = triple_indices(rgb)
+        arranged = arrange(indices, rgb)
+        assert sorted(arranged) == sorted(indices), (rgb, indices, arranged)
+        assert arrange(indices, rgb) == arranged, "arrangement is not deterministic"
+
+    # It is a function of the colour and of nothing else, which is what lets a
+    # consumer holding only `.colour` compute the right triple.
+    assert emoji_triple((0x26, 0x92, 0xD9)) == emoji_triple(parse_hex("#2692d9"))
+
+    # The pair that motivated arranging at all: three units apart in one
+    # channel, identical multiset, and they must not render alike.
+    near_a, near_b = parse_hex("#2692d9"), parse_hex("#2695d9")
+    assert triple_indices(near_a) == triple_indices(near_b), "premise changed"
+    assert emoji_triple(near_a) != emoji_triple(near_b), (
+        "adjacent colours collapsed to one triple again")
 
     # This repository, pinned at TOP_PAD = 3.
     if TOP_PAD == 3:
