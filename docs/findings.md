@@ -66,6 +66,17 @@ Phase 2 must not begin with any Phase 0 item unresolved.
   documentation quote often given for this ("warning message shown to the user")
   says only what the field is *for* and settles nothing; it should not be cited
   as though it did.
+- **Sharpened, 2026-08-18.** "No hook can put an image in the chat" was right
+  but understated the constraint. The text identicon was sent through the same
+  channel to find out what *does* survive: the octants rendered, and the colour
+  emoji rendered **in colour**. So the channel carries text faithfully. What it
+  cannot carry is anything whose meaning depends on lines relating to each
+  other, because the `Stop says:` prefix arrives on **every line**, not once per
+  message — it lands between the two halves of the mark and shears it into two
+  unrelated fragments. Padding cannot fix it: the compensation needed is exactly
+  the compensation already applied to the line above. The rule is therefore
+  *hooks cannot render anything multi-line*, and a one-line mark — the emoji
+  triple alone — is the only shape this channel would take.
 - **Date:** 2026-08-17
 - **Consequence:** the design premise is gone. The docs never promised markdown
   -- `systemMessage` is described only as "warning message shown to the user" --
