@@ -1,10 +1,17 @@
 #!/usr/bin/env python3
-"""The identicon as two lines of text, for clients that render neither.
+"""The identicon as a mosaic: two lines of text, for clients that render
+neither an image nor ANSI colour.
 
 A terminal chat client shows an assistant message as plain markdown: the inline
 PNG arrives as literal base64, and ANSI escapes are stripped before they reach
 the terminal. What does survive is text -- including Unicode block glyphs and
 colour emoji. This module renders an identicon into those two channels.
+
+"Mosaic" is the historical term for exactly these glyphs. Teletext called its
+block-graphics characters mosaics and distinguished contiguous from separated
+ones; the octants here are their descendants, and Unicode kept the distinction
+-- `SEPARATED BLOCK QUADRANT-1` and 77 siblings -- while dropping the word. It
+also describes the result: small coloured tiles making a picture.
 
 The output is two lines:
 
@@ -297,7 +304,7 @@ def triple_detail(rgb):
 # The whole mark
 # ---------------------------------------------------------------------------
 
-def blocktext(grid, rgb):
+def mosaic(grid, rgb):
     """The identicon as two lines, the emoji terminating the lower one.
 
     See the module docstring for why the emoji go last rather than first, and
@@ -356,11 +363,11 @@ def selftest():
         expected = ("\U0001CEA0\U0001CEA0  \n"
                     "\U0001CD86\U0001CD82\U0001FBE6 "
                     "\U0001F7E9\U0001F7E6\U0001F7E6")
-        actual = blocktext(grid, parse_hex("#2692d9"))
+        actual = mosaic(grid, parse_hex("#2692d9"))
         assert actual == expected, actual
 
     # The emoji terminate the mark: they are on the last line, not the first.
-    mark = blocktext(parse_grid("#" * 25), parse_hex("#2692d9"))
+    mark = mosaic(parse_grid("#" * 25), parse_hex("#2692d9"))
     first, last = mark.split("\n")
     assert not any(p[0] in first for p in PALETTE), first
     assert last.endswith(emoji_triple(parse_hex("#2692d9"))), last
@@ -382,8 +389,8 @@ def selftest():
 def _main(argv):
     if not argv or argv[0] in ("-h", "--help"):
         print(__doc__.strip().splitlines()[0])
-        print("\nusage: identicon-blocktext.py --selftest")
-        print("       identicon-blocktext.py <#rrggbb> <grid>")
+        print("\nusage: identicon-mosaic.py --selftest")
+        print("       identicon-mosaic.py <#rrggbb> <grid>")
         print("\n  <grid>  25 characters, or five rows separated by commas;")
         print("          `#`, `1`, `X` or `x` is a filled cell.")
         return 0
@@ -394,7 +401,7 @@ def _main(argv):
     if len(argv) != 2:
         print("need a colour and a grid; --help for the spelling")
         return 2
-    print(blocktext(parse_grid(argv[1]), parse_hex(argv[0])))
+    print(mosaic(parse_grid(argv[1]), parse_hex(argv[0])))
     return 0
 
 
