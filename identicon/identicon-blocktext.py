@@ -56,13 +56,20 @@ emoji out. Nothing else is consulted -- not the key, not the digest, not the
 grid. Two projects sharing a colour share a triple, which is harmless, because
 the grid is what carries identity.
 
-The palette is anchored on the Unicode *names*, not on any font. LARGE BLUE
-SQUARE is blue, so it is `#0000FF` here. The installed Noto Color Emoji paints
-it Material Blue 700 `#1976D2`, and Apple, Twemoji and Windows differ again;
-deriving the palette from whichever font is present would make the mapping
-unstable across machines for no gain. A consequence worth having: every
-canonical colour maps to three of its own square with no special case in the
-code.
+The palette is anchored on the Unicode *names*, and nothing here reads the
+local system. LARGE BLUE SQUARE is blue, so it is `#0000FF`, whatever any
+particular font paints -- the installed Noto renders it Material Blue 700
+`#1976D2`, and Apple, Twemoji and Windows all differ again.
+
+This is a requirement, not a simplification. A repository must produce the same
+sequence of emoji for everyone who works on it: two people looking at the same
+project should be describing the same mark to each other, and a triple derived
+from whichever font happened to be installed would be a property of the
+reader's machine rather than of the repository. Do not sample fonts here, and
+be suspicious of any change that makes the output depend on the environment.
+
+A consequence worth having: every canonical colour maps to three of its own
+square, with no special case in the code.
 
 The nearest single colour is used twice. Choosing freely from all 165 mixtures
 minimises error but reads badly, because the eye does not average three large
