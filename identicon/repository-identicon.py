@@ -45,12 +45,25 @@ GRID = 5
 # how a default drifts from the specification without anyone editing the rule.
 SATURATION = 0.7
 LIGHTNESS = 0.5
+# **Not renamed with this module, deliberately.** This is an icon *theme*
+# namespace, not a filename: it prefixes every PNG installed into the user's
+# theme and every Konsole profile written. Changing it would orphan everything
+# already installed under the old prefix -- they would stop being found and stop
+# being uninstallable by name. The specification says the prefix belongs to the
+# implementing tool, and the implementing tool is Claude-State-Panel.
 ICON_PREFIX = "claude-state-identicon"
 INSTALL_SIZES = (16, 22, 24, 32, 48, 64, 128, 256)
 
 # An optional one-line seed at the repository top level, overriding the derived
 # key. Committing it makes a project's identicon travel with the repository.
-OVERRIDE_FILENAME = ".claude-state-identicon"
+#
+# Renamed away from `.claude-state-identicon`, which named one consumer of a
+# specification that has several and none of which is Claude. The old name is
+# still honoured on read: it is a file committed into other people's
+# repositories, so dropping it would silently change their identicon, which is
+# the one thing an override exists to prevent.
+OVERRIDE_FILENAME = ".repository-identicon"
+LEGACY_OVERRIDE_FILENAMES = (".claude-state-identicon",)
 
 
 def normalise_key(path):
@@ -148,18 +161,22 @@ def repo_remote_url(path):
 
 
 def override_key(directory):
-    """The committed seed at `directory`, if there is a usable one."""
+    """The committed seed at `directory`, if there is a usable one.
+
+    The current name wins; a legacy name is honoured only when the current one
+    is absent, so a repository carrying both is not left guessing.
+    """
     if not directory:
         return None
-    candidate = pathlib.Path(directory) / OVERRIDE_FILENAME
-    try:
-        text = candidate.read_text()
-    except (OSError, UnicodeDecodeError):
-        return None
-    for line in text.splitlines():
-        line = line.strip()
-        if line and not line.startswith("#"):
-            return line
+    for name in (OVERRIDE_FILENAME, *LEGACY_OVERRIDE_FILENAMES):
+        try:
+            text = (pathlib.Path(directory) / name).read_text()
+        except (OSError, UnicodeDecodeError):
+            continue
+        for line in text.splitlines():
+            line = line.strip()
+            if line and not line.startswith("#"):
+                return line
     return None
 
 
@@ -169,7 +186,7 @@ def resolve_key(path=None, explicit=None):
     Precedence, most specific first:
 
       explicit   given on the command line
-      override   a committed .claude-state-identicon at the repository root
+      override   a committed .repository-identicon at the repository root
       remote     host/owner/repo from the git remote -- the portable one
       toplevel   the repository root path, for a repository with no remote
       path       the directory itself, outside a repository
@@ -1203,7 +1220,7 @@ def cmd_doctor(args):
 
 def build_parser():
     parser = argparse.ArgumentParser(
-        prog="claude-state-identicon",
+        prog="repository-identicon",
         description="Per-project identicons for Konsole tabs, over the session D-Bus interface.",
     )
     sub = parser.add_subparsers(dest="command", required=True)

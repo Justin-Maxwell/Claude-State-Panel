@@ -149,7 +149,7 @@ the derived project hue may be a computed colour, it applies only to the project
 rule, and it never encodes state. Everything else stays a theme role.
 
 The derivation is the one already shipped in
-`identicon/claude-state-identicon.py` — digest byte 15 of the project key for
+`identicon/repository-identicon.py` — digest byte 15 of the project key for
 the hue. Sharing it means a Konsole tab and a panel glyph agree on a project's
 colour without either knowing about the other. Factoring the two to a single
 implementation is Phase 1 work; the rule is that they must not drift.

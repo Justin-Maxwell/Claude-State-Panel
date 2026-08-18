@@ -45,7 +45,7 @@ Resolve most specific first, and stop at the first that yields a value:
 | # | Source | Key | Portable |
 |---|---|---|---|
 | 1 | `explicit` | supplied by the caller | — |
-| 2 | `override` | first non-blank, non-`#` line of `.claude-state-identicon` at the repository top level, whitespace-stripped | yes, if committed |
+| 2 | `override` | first non-blank, non-`#` line of `.repository-identicon` at the repository top level, whitespace-stripped | yes, if committed |
 | 3 | `remote` | the normalised git remote, below | **yes** |
 | 4 | `toplevel` | the repository top level, as an absolute path | no |
 | 5 | `path` | the directory itself, as an absolute path | no |
@@ -54,6 +54,13 @@ Sources 3 and 2 are the only ones that survive being cloned elsewhere. An
 implementation SHOULD report which source it used, because a project silently
 falling back to a path key will change identity when checked out on another
 machine, and that is worth seeing before it happens rather than after.
+
+The override file was formerly `.claude-state-identicon`, named for one
+consumer of a specification that has several and none of which is Claude. An
+implementation SHOULD still honour that name where the current one is absent,
+and MUST prefer the current one where both exist: the file is committed into
+other people's repositories, and dropping it silently changes the identity it
+was written to pin — the one outcome an override exists to prevent.
 
 The git remote is `origin` where one exists, otherwise the first remote listed.
 

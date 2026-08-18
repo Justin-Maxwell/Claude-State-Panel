@@ -17,7 +17,8 @@ GOLDEN_DIR = REPO_ROOT / "tests" / "golden"
 
 EVALUATOR = REPO_ROOT / "evaluator" / "claude-state-eval.py"
 CLI = REPO_ROOT / "bin" / "claude-state-panel"
-IDENTICON = REPO_ROOT / "identicon" / "claude-state-identicon.py"
+IDENTICON = REPO_ROOT / "identicon" / "repository-identicon.py"
+IDENTICON_TEXT = REPO_ROOT / "identicon" / "text-identicon.py"
 IDENTICON_SPEC = REPO_ROOT / "docs" / "project-identicon-spec.md"
 
 

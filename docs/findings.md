@@ -29,7 +29,7 @@ outstanding, none of which block Phase 1.
 | # | Question | Phase | State |
 |---|---|---|---|
 | 7 | Can a non-focused process raise a Konsole window under KWin on Wayland? | 3 | **scoped** — Konsole cannot; two untested routes, finding 7 |
-| 11 | Is `setBadgeColor` present in Konsole's D-Bus introspection, given `QColor` has no registered metatype? | — | open — `identicon/claude-state-identicon.py probe` answers it |
+| 11 | Is `setBadgeColor` present in Konsole's D-Bus introspection, given `QColor` has no registered metatype? | — | open — `identicon/repository-identicon.py probe` answers it |
 | 12 | Does `ProfileManager` pick up a `.profile` written after Konsole started, or is a restart required? | — | open — same probe |
 | 13 | Does `QIcon::fromTheme` find a newly installed hicolor icon without a cache rebuild? | — | open — same probe |
 | 14 | Are subagent sessions ever tracked as sessions in their own right, or do hooks fire only for top-level ones? | 1 | open — decides whether *top level* is detected or automatic |
@@ -105,8 +105,9 @@ Phase 2 must not begin with any Phase 0 item unresolved.
   different project hue — directly contradicting the ordinals, which exist to
   say those sessions *are* one project. Two features would have disagreed on
   screen. Identicons remain computed, never stored as images; the committed
-  `.claude-state-identicon` seed is an override only, because an identicon must
-  exist for repositories that carry no such file.
+  `.repository-identicon` seed is an override only, because an identicon must
+  exist for repositories that carry no such file. (It was
+  `.claude-state-identicon` when this was written; the old name is still read.)
 
 ## R. Kirigami exposes nine text colour roles, not four
 

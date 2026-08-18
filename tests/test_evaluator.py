@@ -227,7 +227,7 @@ class TestProjectIdentity(unittest.TestCase):
 
     def test_it_derives_nothing_and_delegates_everything(self):
         """The evaluator holds no derivation of its own. Key resolution and the
-        identicon itself are `identicon/claude-state-identicon.py`, tested in
+        identicon itself are `identicon/repository-identicon.py`, tested in
         `test_identicon.py`; all this asserts is that the adapter returns that
         module's answer rather than one of its own.
 

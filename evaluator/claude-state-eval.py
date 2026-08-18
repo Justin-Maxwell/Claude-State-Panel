@@ -173,7 +173,7 @@ def label_for(session):
 IDENTICON_SIZE = 5
 
 # There is exactly one implementation of the identicon, and it is not here.
-# `identicon/claude-state-identicon.py` implements `docs/project-identicon-spec.md`;
+# `identicon/repository-identicon.py` implements `docs/project-identicon-spec.md`;
 # this file imports it rather than deriving anything itself. For one day it did
 # derive its own -- SHA-256, bit-shifted -- while the Konsole branch derived
 # another -- MD5, byte parity -- and the two disagreed on screen from the same
@@ -194,8 +194,8 @@ def _identicon():
         import importlib.util
 
         root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-        path = os.path.join(root, "identicon", "claude-state-identicon.py")
-        spec = importlib.util.spec_from_file_location("claude_state_identicon", path)
+        path = os.path.join(root, "identicon", "repository-identicon.py")
+        spec = importlib.util.spec_from_file_location("repository_identicon", path)
         module = importlib.util.module_from_spec(spec)
         spec.loader.exec_module(module)
         _IDENTICON_MODULE = module
@@ -206,7 +206,7 @@ def identity_key(cwd):
     """The string a project's identity is derived from.
 
     Delegates to `resolve_key`, which tries, most specific first: an explicit
-    key, a committed `.claude-state-identicon`, the normalised git remote, the
+    key, a committed `.repository-identicon`, the normalised git remote, the
     repository top level, then the directory itself. Only the first three
     survive being cloned somewhere else.
     """
@@ -224,7 +224,7 @@ def project_identity(cwd):
     not; the popup has room.
 
     Nothing here derives anything. If the identicon needs to change, it changes
-    in the spec and in `identicon/claude-state-identicon.py`, and every consumer
+    in the spec and in `identicon/repository-identicon.py`, and every consumer
     follows on the next poll.
     """
     directory = cwd or ""

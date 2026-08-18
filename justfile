@@ -1,5 +1,5 @@
 plasmoid_id := "nz.jaymax.claudestatepanel"
-identicon := "identicon/claude-state-identicon.py"
+identicon := "identicon/repository-identicon.py"
 
 # List available recipes
 default:

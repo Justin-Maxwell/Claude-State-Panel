@@ -119,7 +119,7 @@ ordinals where a project has several live sessions, and a project hue rule. It
 is deliberately maximal and carries its own collapse order.
 
 How a project's identicon is derived is specified in
-`docs/project-identicon-spec.md`, and `identicon/claude-state-identicon.py` is
+`docs/project-identicon-spec.md`, and `identicon/repository-identicon.py` is
 the one implementation of it. See [Identicons](#identicons) below for which
 convention that follows and why the evaluator does not compute its own.
 
@@ -340,7 +340,7 @@ MD5 is appropriate precisely because no security property is claimed. This is a
 visual hash. Nothing authenticates against it and nothing is protected by it.
 
 **One implementation, and it is not the evaluator.**
-`identicon/claude-state-identicon.py` implements the spec.
+`identicon/repository-identicon.py` implements the spec.
 `evaluator/claude-state-eval.py` imports it; `probe/turn-identicon.py` imports
 it; the Konsole icon and profile routes use it. For one day the evaluator had
 its own derivation — SHA-256, bit-shifted — while the Konsole branch had

@@ -20,7 +20,7 @@ import zlib
 
 import support
 
-ident = support.load_script(support.IDENTICON, "claude_state_identicon")
+ident = support.load_script(support.IDENTICON, "repository_identicon")
 
 # Two unrelated real-world-shaped paths, used throughout.
 KEY_A = "/home/justin/src/claude-state-panel"
@@ -813,7 +813,7 @@ class TestEmitEndToEnd(unittest.TestCase):
             with self.subTest(event=event):
                 hook = entries[0]["hooks"][0]
                 self.assertEqual(hook["type"], "command")
-                self.assertTrue(hook["command"].endswith("claude-state-identicon.py"))
+                self.assertTrue(hook["command"].endswith("repository-identicon.py"))
                 self.assertIn("emit", hook["args"])
 
 

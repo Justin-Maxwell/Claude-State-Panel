@@ -206,7 +206,7 @@ class TestTheArtifactSetAgreesWithItself(unittest.TestCase):
         for path in (self.PNG, self.SVG, self.COLOUR, self.TEXT):
             self.assertTrue(path.exists(), f"{path} is missing")
 
-    def test_the_text_artifact_is_what_the_mosaic_module_renders(self):
+    def test_the_text_artifact_is_what_the_renderer_renders(self):
         """The one artifact nothing else checks, and the one most easily broken
         by hand: the upper line ends in two spaces, because a blank cell is
         SPACE doubled to match the double-width glyphs beside it. That
@@ -214,21 +214,20 @@ class TestTheArtifactSetAgreesWithItself(unittest.TestCase):
         collapses both the mark's width and the line break that separates its
         two lines.
         """
-        identicon = support.load_script(support.IDENTICON, "claude_state_identicon")
-        mosaic = support.load_script(
-            support.REPO_ROOT / "identicon" / "mosaic-identicon.py", "mosaic")
+        identicon = support.load_script(support.IDENTICON, "repository_identicon")
+        renderer = support.load_script(support.IDENTICON_TEXT, "text_identicon")
 
         key, _source = identicon.resolve_key(str(support.REPO_ROOT))
-        rendered = mosaic.mosaic(identicon.identicon_grid(key),
-                                 mosaic.parse_hex(self.COLOUR.read_text().strip()))
+        rendered = renderer.text(identicon.identicon_grid(key),
+                                 renderer.parse_hex(self.COLOUR.read_text().strip()))
         self.assertEqual(rendered + "\n", self.TEXT.read_text(),
-                         "the committed mosaic has drifted from the module")
+                         "the committed text form has drifted from the module")
 
-    def test_the_mosaic_keeps_the_whitespace_that_carries_its_shape(self):
-        text = self.TEXT.read_text()
-        lines = text.splitlines()
-        self.assertEqual(2, len(lines), "the mosaic is exactly two lines")
-        self.assertTrue(text.endswith("\n") and not text.endswith("\n\n"))
+    def test_the_text_form_keeps_the_whitespace_that_carries_its_shape(self):
+        content = self.TEXT.read_text()
+        lines = content.splitlines()
+        self.assertEqual(2, len(lines), "the text form is exactly two lines")
+        self.assertTrue(content.endswith("\n") and not content.endswith("\n\n"))
         self.assertTrue(lines[0].endswith("  "),
                         "the upper line lost its trailing blank cell, which is "
                         "both a grid column and the markdown hard line break")
@@ -385,12 +384,12 @@ class TestThePortableInstallerAgrees(unittest.TestCase):
         self.assertEqual(MARKDOWN_IMAGE.match(message).group(1),
                          self.portable_b64(),
                          "the portable installer has drifted from "
-                         "identicon/claude-state-identicon.py")
+                         "identicon/repository-identicon.py")
 
     def test_it_resolves_the_same_key_from_the_same_remote(self):
         """Agreeing on the pixels is worth little if they came from a key the
         two would resolve differently in some other repository."""
-        module = support.load_script(support.IDENTICON, "claude_state_identicon")
+        module = support.load_script(support.IDENTICON, "repository_identicon")
         expected, source = module.resolve_key(str(support.REPO_ROOT))
         result = subprocess.run(
             ["python3", str(PORTABLE_INSTALLER), str(support.REPO_ROOT), "--key"],
@@ -409,14 +408,14 @@ class TestThePortableInstallerAgrees(unittest.TestCase):
     def test_it_derives_the_same_colour_and_vector_as_the_full_implementation(self):
         """The other three artifacts need holding to the reference too, not
         just the raster the chat transcript happens to use."""
-        module = support.load_script(support.IDENTICON, "claude_state_identicon")
+        module = support.load_script(support.IDENTICON, "repository_identicon")
         key, _source = module.resolve_key(str(support.REPO_ROOT))
         self.assertEqual(module.hex_colour(module.identicon_colour(key)),
                          self.portable("--colour").strip())
         self.assertEqual(module.render_svg(key, SIZE), self.portable("--svg"))
 
     def test_the_vendored_text_renderer_is_the_one_committed_here(self):
-        """The plugin carries its own copy of the mosaic renderer, because a
+        """The plugin carries its own copy of the text renderer, because a
         plugin is copied whole and cannot depend on anything.
 
         Byte equality rather than behavioural comparison, because the thing most
@@ -427,18 +426,18 @@ class TestThePortableInstallerAgrees(unittest.TestCase):
         the table from `unicodedata`, so the vendored copy can prove itself --
         but only if it is genuinely the same file.
         """
-        canonical = support.REPO_ROOT / "identicon" / "mosaic-identicon.py"
-        vendored = PORTABLE_INSTALLER.parent / "mosaic-identicon.py"
+        canonical = support.IDENTICON_TEXT
+        vendored = PORTABLE_INSTALLER.parent / "text-identicon.py"
         self.assertTrue(vendored.exists(),
                         f"{vendored} is missing, so the plugin writes no text form")
         self.assertEqual(canonical.read_bytes(), vendored.read_bytes(),
                          "the vendored renderer has drifted; re-copy it from "
-                         "identicon/mosaic-identicon.py")
+                         "identicon/text-identicon.py")
 
     def test_the_vendored_renderer_passes_its_own_selftest(self):
         """It re-derives the whole octant table from the Unicode database, so a
         corrupted copy fails here rather than in someone's terminal."""
-        vendored = PORTABLE_INSTALLER.parent / "mosaic-identicon.py"
+        vendored = PORTABLE_INSTALLER.parent / "text-identicon.py"
         result = subprocess.run(["python3", str(vendored), "--selftest"],
                                 capture_output=True, text=True, timeout=60)
         self.assertEqual(0, result.returncode, result.stdout + result.stderr)

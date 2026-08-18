@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Emit the project identicon into the chat transcript at the end of a turn.
 
-Companion to `identicon/claude-state-identicon.py emit`, which renders to a
+Companion to `identicon/repository-identicon.py emit`, which renders to a
 terminal -- ANSI, sixel, kitty. This one renders to a *chat* client, where the
 only channel is a `systemMessage` string that gets rendered as markdown, so the
 icon travels as a `data:` URI. Verified 2026-08-17: a markdown `data:image/png`
@@ -18,7 +18,7 @@ so the output is deterministic: it does not depend on the model choosing to
 comply, cannot be dropped under context pressure, and costs no tokens.
 
 Nothing here derives an identicon. The key and the pixels both come from
-`identicon/claude-state-identicon.py`, which implements
+`identicon/repository-identicon.py`, which implements
 `docs/project-identicon-spec.md`. This file only wraps them for a chat client.
 
 **This file no longer installs anything.** The installed set is four artifacts
@@ -45,11 +45,11 @@ import sys
 SIZE = 22
 
 _ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-_IMPLEMENTATION = os.path.join(_ROOT, "identicon", "claude-state-identicon.py")
+_IMPLEMENTATION = os.path.join(_ROOT, "identicon", "repository-identicon.py")
 
 
 def _identicon():
-    spec = importlib.util.spec_from_file_location("claude_state_identicon",
+    spec = importlib.util.spec_from_file_location("repository_identicon",
                                                   _IMPLEMENTATION)
     module = importlib.util.module_from_spec(spec)
     spec.loader.exec_module(module)

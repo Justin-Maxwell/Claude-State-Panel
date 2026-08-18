@@ -1,7 +1,7 @@
 """Complete 2x4 octant table, derived from unicodedata rather than assumed.
 
 PROVENANCE ONLY. Nothing imports this. The table it produces is inlined in
-identicon/mosaic-identicon.py, whose selftest re-derives and checks it
+identicon/text-identicon.py, whose selftest re-derives and checks it
 against unicodedata directly; this script is kept as the record of how that
 table was worked out, and of the mistake it exists to prevent -- assuming the
 octants were 240 characters at U+1CD00 rather than 230 at U+1CD00-U+1CDE5,

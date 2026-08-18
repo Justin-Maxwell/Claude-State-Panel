@@ -1,13 +1,17 @@
 #!/usr/bin/env python3
-"""The identicon as a mosaic: two lines of text, for clients that render
-neither an image nor ANSI colour.
+"""The identicon as text: two lines, for clients that render neither an image
+nor ANSI colour. The artifact is `.txt`, and this file is named for that rather
+than for the technique, so that the module, the function and the file a reader
+opens all say the same word.
 
 A terminal chat client shows an assistant message as plain markdown: the inline
 PNG arrives as literal base64, and ANSI escapes are stripped before they reach
 the terminal. What does survive is text -- including Unicode block glyphs and
 colour emoji. This module renders an identicon into those two channels.
 
-"Mosaic" is the historical term for exactly these glyphs. Teletext called its
+"Mosaic" is the historical term for exactly these *glyphs*, and survives here
+only in that sense -- as the lineage of the characters, not as a name for what
+this produces. Teletext called its
 block-graphics characters mosaics and distinguished contiguous from separated
 ones; the octants here are their descendants, and Unicode kept the distinction
 -- `SEPARATED BLOCK QUADRANT-1` and 77 siblings -- while dropping the word. It
@@ -304,8 +308,13 @@ def triple_detail(rgb):
 # The whole mark
 # ---------------------------------------------------------------------------
 
-def mosaic(grid, rgb):
+def text(grid, rgb):
     """The identicon as two lines, the emoji terminating the lower one.
+
+    The 5x5 matrix and the colour, and nothing else. A caller that has just
+    derived an identicon is already holding both, so this needs no key, no
+    digest and no palette of its own -- which is what lets it be vendored on its
+    own into a tool that has no identicon machinery at all.
 
     See the module docstring for why the emoji go last rather than first, and
     for the double-width behaviour that matters when laying several of these
@@ -363,11 +372,11 @@ def selftest():
         expected = ("\U0001CEA0\U0001CEA0  \n"
                     "\U0001CD86\U0001CD82\U0001FBE6 "
                     "\U0001F7E9\U0001F7E6\U0001F7E6")
-        actual = mosaic(grid, parse_hex("#2692d9"))
+        actual = text(grid, parse_hex("#2692d9"))
         assert actual == expected, actual
 
     # The emoji terminate the mark: they are on the last line, not the first.
-    mark = mosaic(parse_grid("#" * 25), parse_hex("#2692d9"))
+    mark = text(parse_grid("#" * 25), parse_hex("#2692d9"))
     first, last = mark.split("\n")
     assert not any(p[0] in first for p in PALETTE), first
     assert last.endswith(emoji_triple(parse_hex("#2692d9"))), last
@@ -389,8 +398,8 @@ def selftest():
 def _main(argv):
     if not argv or argv[0] in ("-h", "--help"):
         print(__doc__.strip().splitlines()[0])
-        print("\nusage: mosaic-identicon.py --selftest")
-        print("       mosaic-identicon.py <#rrggbb> <grid>")
+        print("\nusage: text-identicon.py --selftest")
+        print("       text-identicon.py <#rrggbb> <grid>")
         print("\n  <grid>  25 characters, or five rows separated by commas;")
         print("          `#`, `1`, `X` or `x` is a filled cell.")
         return 0
@@ -401,7 +410,7 @@ def _main(argv):
     if len(argv) != 2:
         print("need a colour and a grid; --help for the spelling")
         return 2
-    print(mosaic(parse_grid(argv[1]), parse_hex(argv[0])))
+    print(text(parse_grid(argv[1]), parse_hex(argv[0])))
     return 0
 
 

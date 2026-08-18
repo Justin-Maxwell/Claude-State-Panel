@@ -6,7 +6,7 @@ it: the panel answers *is anything waiting on me*, this answers *which project
 is this tab*.
 
 Three routes exist. Two work on a stock Konsole and are implemented in
-`identicon/claude-state-identicon.py`. The third is the one originally scoped —
+`identicon/repository-identicon.py`. The third is the one originally scoped —
 an identicon on the session toolbar — and it is blocked.
 
 Every claim below was checked against `KDE/konsole@master`. Nothing here is
@@ -28,8 +28,8 @@ So a one or two character project label with a deterministic colour can be set
 from a shell, with no C++ at all.
 
 ```
-identicon/claude-state-identicon.py badge          # marks the tab you run it in
-identicon/claude-state-identicon.py badge --clear
+identicon/repository-identicon.py badge          # marks the tab you run it in
+identicon/repository-identicon.py badge --clear
 ```
 
 **Caveat, unresolved off-machine.** `setBadgeColor` takes a `QColor`, which is
@@ -39,7 +39,7 @@ The method may therefore be missing from introspection despite the
 degrades to text-only with a warning rather than failing:
 
 ```
-identicon/claude-state-identicon.py probe
+identicon/repository-identicon.py probe
 ```
 
 The badge paints over the terminal view, not on the toolbar, and
@@ -65,8 +65,8 @@ standard size plus a scalable SVG into `$XDG_DATA_HOME/icons/hicolor`, which
 merges with the system theme, so no `index.theme` of our own is needed.
 
 ```
-identicon/claude-state-identicon.py install
-identicon/claude-state-identicon.py profile --apply
+identicon/repository-identicon.py install
+identicon/repository-identicon.py profile --apply
 ```
 
 The generated profile declares `Parent=FALLBACK/` and sets nothing but `Name`
@@ -145,7 +145,7 @@ The two points that bear on Konsole specifically:
 - Konsole's profile `Icon` is a **theme name, not a path**, so the icon has to
   be installed before the profile can reference it. `profile` does both.
 
-The identicon is always computed. `.claude-state-identicon` at the repository
+The identicon is always computed. `.repository-identicon` at the repository
 top level overrides the derived key, and holds a seed rather than an image.
 
 ## Command line
@@ -159,9 +159,9 @@ just identicon-probe                # which D-Bus methods this Konsole exposes
 just identicon-demo                 # probe, then exercise both routes
 just identicon-uninstall            # remove icons and profiles for the cwd
 
-identicon/claude-state-identicon.py doctor
-identicon/claude-state-identicon.py sessions
-identicon/claude-state-identicon.py render . --format svg --size 256 --out x.svg
+identicon/repository-identicon.py doctor
+identicon/repository-identicon.py sessions
+identicon/repository-identicon.py render . --format svg --size 256 --out x.svg
 ```
 
 The session to act on is taken from `KONSOLE_DBUS_SERVICE` and

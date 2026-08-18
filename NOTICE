@@ -54,7 +54,7 @@ stewartlord/identicon.js  -- VENDORED
   identicon/vectors.json, and tests/test_conformance.py re-runs it on every
   test run to confirm the pinned vectors are still what it produces. Its grid
   and colour rules were transliterated into Python in
-  identicon/claude-state-identicon.py; no code was copied into that file.
+  identicon/repository-identicon.py; no code was copied into that file.
 
   Vendored rather than fetched because a downloaded reference can vanish -- one
   did, during the week this was written -- and a conformance file nobody can
