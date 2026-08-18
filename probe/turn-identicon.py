@@ -5,8 +5,8 @@ Companion to `identicon/claude-state-identicon.py emit`, which renders to a
 terminal -- ANSI, sixel, kitty. This one renders to a *chat* client, where the
 only channel is a `systemMessage` string that gets rendered as markdown, so the
 icon travels as a `data:` URI. Verified 2026-08-17: a markdown `data:image/png`
-renders inline in the Claude Desktop chat, and at 30x30 it stays in the text
-flow rather than being wrapped in a card.
+renders inline in the Claude Desktop chat, and at this size it stays in the
+text flow rather than being wrapped in a card.
 
 Registered as a `Stop` hook. `Stop` fires on *every* response turn rather than
 only on genuine completions -- the exact property that made it useless as a
@@ -21,28 +21,28 @@ Nothing here derives an identicon. The key and the pixels both come from
 `identicon/claude-state-identicon.py`, which implements
 `docs/project-identicon-spec.md`. This file only wraps them for a chat client.
 
-**This script is the generator, not the runtime.** An identicon is a constant
-for a repository, so running a Python process every turn to rederive it is work
-for its own sake -- 68ms measured, against 2.3ms for a shell `printf` of the
-finished string. `--settings` bakes that string into the project's own
-`.claude/settings.json`, which is what is actually registered. Running this
-file as a hook still works and is what the tests exercise, but it is the
-fallback, not the design.
+**This file no longer installs anything.** The installed set is four artifacts
+in `.identicon/` -- base64 for the transcript literal, a raster, a vector, and
+the colour -- and the thing that writes them has to run in repositories that
+have never heard of this one. That is the `repo-identicon` skill. What stays
+here is the hook contract the tests exercise and the reasoning that produced
+it.
 
-    probe/turn-identicon.py --settings > .claude/settings.json
-
-Status: probe. `.claude/settings.json` in *this* repository is live; nothing is
-registered in `~/.claude/settings.json`.
+Status: probe. Nothing is registered in `~/.claude/settings.json`, and the
+`Stop` hook route below is recorded as rejected rather than merely unused.
 """
 
 import base64
 import importlib.util
 import json
 import os
-import re
 import sys
 
-SIZE = 30
+# 4-pixel cells inside a 1-pixel border: 5*4 + 2*1. Superseded 30, which was
+# reached by halving twice and had been seen in place; 22 is the first size
+# that is both small enough beside a line of text and divides exactly, where 30
+# leaves a stray pixel and sits fractionally off-centre.
+SIZE = 22
 
 _ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 _IMPLEMENTATION = os.path.join(_ROOT, "identicon", "claude-state-identicon.py")
@@ -67,11 +67,10 @@ def message_for(cwd):
     return f"![](data:image/png;base64,{base64.b64encode(png).decode('ascii')})"
 
 
-# Named by Justin. Not hidden and not abbreviated: it says what it holds, in
-# the order you need to know it -- whose identicon, of what, in what encoding.
-# A repository that carries this file should not need anything else to explain
-# it.
-B64_NAME = "repository-identicon-png.b64"
+# One directory rather than four root entries, so the SVG, the raster and the
+# colour cost nothing at the top level. The naming Justin chose survives the
+# move intact -- the prefix became the directory, the suffix the filename.
+B64_NAME = ".identicon/png.b64"
 
 # `$(cat ...)` strips the trailing newline, so the file can be a well-formed
 # text file and the data URI still comes out clean.
@@ -144,30 +143,12 @@ def settings_fragment():
     }
 
 
-def install(cwd):
-    """Write the artifact and refresh the literal in CLAUDE.md.
-
-    No hook is written. Finding V: a hook's `systemMessage` arrives as plain
-    text with the event name prefixed to every line, and no hook output field
-    can display an image. The only channel that renders markdown in a GUI chat
-    client is an assistant message, which a hook cannot reach and an
-    instruction can.
-    """
-    b64_path = os.path.join(cwd, B64_NAME)
-    with open(b64_path, "w", encoding="utf-8") as handle:
-        handle.write(b64_for(cwd) + "\n")
-
-    instructions = os.path.join(cwd, "CLAUDE.md")
-    if os.path.exists(instructions):
-        with open(instructions, encoding="utf-8") as handle:
-            text = handle.read()
-        replaced = re.sub(r"!\[\]\(data:image/png;base64,[A-Za-z0-9+/=]+\)",
-                          message_for(cwd), text, count=1)
-        if replaced != text:
-            with open(instructions, "w", encoding="utf-8") as handle:
-                handle.write(replaced)
-
-    return b64_path, instructions
+# Installation used to live here. It does not any more: the installed set is
+# four artifacts in `.identicon/` rather than one file, and the thing that
+# writes them has to run in repositories that have never heard of this one. It
+# is the `repo-identicon` skill, and this file would only be a second
+# implementation of it, free to disagree.
+INSTALLER = "/repo-identicon"
 
 
 def main():
@@ -184,9 +165,8 @@ def main():
         print(b64_for(os.getcwd()))
         return 0
     if "--install" in sys.argv:
-        for path in install(os.getcwd()):
-            print(path)
-        return 0
+        print(f"installation moved to the skill: {INSTALLER}", file=sys.stderr)
+        return 2
 
     try:
         payload = json.load(sys.stdin)
@@ -210,21 +190,20 @@ def main():
 if __name__ == "__main__":
     sys.exit(main())
 
-# To register this in another repository:
+# To give *another* repository an identicon, do not use this file. It only runs
+# from a checkout of this repository, because it imports the full implementation
+# by absolute path. Use the skill, which carries its own copy of the derivation
+# and depends on nothing:
 #
-#   cd /path/to/that/repo
-#   /path/to/probe/turn-identicon.py --install
+#   /repo-identicon              in a session opened on that repository
+#   ~/.claude/skills/repo-identicon/repo-identicon.py [PATH]
 #
-# Writes .identicon.png at the root and .claude/settings.json. The icon is the
-# repository's, and belongs to the repository; only the hook belongs to Claude
-# Code, and only the hook is filed under .claude/.
+# This file stays because it is where the mechanism was worked out and it is
+# what the hook-contract tests above exercise. The two are held to each other by
+# TestThePortableInstallerAgrees in tests/test_turn_identicon.py: the conformance
+# apparatus -- the vendored identicon.js and its pinned vectors -- lives here, so
+# this is the only place the comparison can be made.
 #
-# Project-level, deliberately. There is no global place a per-repository
-# constant could live, and a user-level hook would have to rederive the key on
-# every turn to know which repository it was in -- which is the cost this
-# exists to remove.
-#
-# The generated literal survives cloning: the key is the git remote, not a
-# path, so the committed settings are correct in every checkout on every
-# machine. Regenerate only if the identicon spec changes; the test suite fails
-# if the committed literal and the derivation ever disagree.
+# The generated literal survives cloning: the key is the git remote, not a path,
+# so the committed files are correct in every checkout on every machine.
+# Regenerate only if the remote changes or the spec does.

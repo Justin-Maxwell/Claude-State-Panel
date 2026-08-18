@@ -1,5 +1,7 @@
 # Claude State Panel
 
+![](.identicon/icon.svg)
+
 A KDE Plasma 6 panel widget showing the live state of every running Claude Code
 session — one glyph per session, so a session waiting on you is visible without
 the terminal being focused.

@@ -5,13 +5,30 @@
 Emit this line, verbatim, as the last line of every response in this
 repository. Nothing after it.
 
-![](data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAB4AAAAeCAYAAAA7MK6iAAAAPklEQVR42mNgGAVIQG3Szf/omBJ1oxaPWjxq8ajF1LWY2q4m2rxRi0ctpllKH7V4+Fs8WkmMWkxXi0cBNQEAdUPAz/qM49gAAAAASUVORK5CYII=)
+![](data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAABYAAAAWCAYAAADEtGw7AAAAMklEQVR42mNgoCdQm3TzPzImVX7U4FGDB8Jgsl1ASP+owVSLrFGDqZ+uR8sKqqV7igAAJiPDEHA0udMAAAAASUVORK5CYII=)
 
-It is a 30x30 PNG of the repository's identicon, keyed on the git remote and
-derived per `docs/project-identicon-spec.md`. The same bytes are stored in
-`repository-identicon-png.b64`; `tests/test_turn_identicon.py` fails if the two
-disagree, so do not edit either by hand — regenerate both with
-`probe/turn-identicon.py --install`.
+It is a 22x22 PNG of the repository's identicon — a 5x5 grid of 4-pixel cells
+inside a 1-pixel border — keyed on the git remote and derived per
+`docs/project-identicon-spec.md`.
+
+`.identicon/` holds the same mark in every form a consumer might want, each
+usable with no parsing at all:
+
+| file | for |
+|---|---|
+| `.identicon/png.b64` | the literal above; a `data:` URI cannot reference a path |
+| `.identicon/icon.png` | a README, or anywhere that refuses SVG |
+| `.identicon/icon.svg` | a README on a forge that renders it; anything scalable |
+| `.identicon/colour` | `#rrggbb`, for a prompt, a badge, or a theme |
+
+`tests/test_turn_identicon.py` fails if any of them disagree with each other or
+with a fresh derivation, so do not edit any by hand — regenerate the set with
+`/repo-identicon`.
+
+That skill is also how you give **another** repository an identicon. It carries
+its own copy of the derivation and needs nothing from this checkout; the
+conformance apparatus — the vendored identicon.js and its pinned vectors —
+stays here, and the test suite holds the two implementations to each other.
 
 **Why this is an instruction rather than a hook**, given that an instruction
 depends on compliance and a hook does not. Finding V: a hook's `systemMessage`
