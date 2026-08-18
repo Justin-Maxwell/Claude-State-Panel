@@ -389,8 +389,8 @@ def selftest():
 def _main(argv):
     if not argv or argv[0] in ("-h", "--help"):
         print(__doc__.strip().splitlines()[0])
-        print("\nusage: identicon-mosaic.py --selftest")
-        print("       identicon-mosaic.py <#rrggbb> <grid>")
+        print("\nusage: mosaic-identicon.py --selftest")
+        print("       mosaic-identicon.py <#rrggbb> <grid>")
         print("\n  <grid>  25 characters, or five rows separated by commas;")
         print("          `#`, `1`, `X` or `x` is a filled cell.")
         return 0

@@ -174,6 +174,7 @@ class TestTheArtifactSetAgreesWithItself(unittest.TestCase):
     PNG = DIRECTORY / f"{STEM}.png"
     SVG = DIRECTORY / f"{STEM}.svg"
     COLOUR = DIRECTORY / f"{STEM}.colour"
+    TEXT = DIRECTORY / f"{STEM}.txt"
 
     def opaque_pixels(self):
         """{(x, y): (r, g, b)} for every non-transparent pixel of the PNG.
@@ -202,8 +203,35 @@ class TestTheArtifactSetAgreesWithItself(unittest.TestCase):
         return pixels
 
     def test_every_artifact_is_present(self):
-        for path in (self.PNG, self.SVG, self.COLOUR):
+        for path in (self.PNG, self.SVG, self.COLOUR, self.TEXT):
             self.assertTrue(path.exists(), f"{path} is missing")
+
+    def test_the_text_artifact_is_what_the_mosaic_module_renders(self):
+        """The one artifact nothing else checks, and the one most easily broken
+        by hand: the upper line ends in two spaces, because a blank cell is
+        SPACE doubled to match the double-width glyphs beside it. That
+        whitespace is load-bearing and invisible, and an editor that trims it
+        collapses both the mark's width and the line break that separates its
+        two lines.
+        """
+        identicon = support.load_script(support.IDENTICON, "claude_state_identicon")
+        mosaic = support.load_script(
+            support.REPO_ROOT / "identicon" / "mosaic-identicon.py", "mosaic")
+
+        key, _source = identicon.resolve_key(str(support.REPO_ROOT))
+        rendered = mosaic.mosaic(identicon.identicon_grid(key),
+                                 mosaic.parse_hex(self.COLOUR.read_text().strip()))
+        self.assertEqual(rendered + "\n", self.TEXT.read_text(),
+                         "the committed mosaic has drifted from the module")
+
+    def test_the_mosaic_keeps_the_whitespace_that_carries_its_shape(self):
+        text = self.TEXT.read_text()
+        lines = text.splitlines()
+        self.assertEqual(2, len(lines), "the mosaic is exactly two lines")
+        self.assertTrue(text.endswith("\n") and not text.endswith("\n\n"))
+        self.assertTrue(lines[0].endswith("  "),
+                        "the upper line lost its trailing blank cell, which is "
+                        "both a grid column and the markdown hard line break")
 
     def test_no_superseded_artifact_survives_beside_its_replacement(self):
         """Carrying both leaves every consumer guessing which is current, and
