@@ -269,11 +269,55 @@ class TestTheArtifactSetAgreesWithItself(unittest.TestCase):
         self.assertFalse((support.REPO_ROOT / "repository-identicon-png.b64").exists())
 
 
-PORTABLE_INSTALLER = pathlib.Path.home() / ".claude" / "skills" / "repo-identicon" / "repo-identicon.py"
+def _find_portable_installer():
+    """The `repo-identicon` script, wherever it currently lives.
+
+    It has moved once already -- from a personal skill under `~/.claude` into
+    the `Claude-Colophon` plugin repository -- and the move was invisible here,
+    because a test that cannot find its subject skips, and a skip reads exactly
+    like a pass in a green run. Hence a list of candidates and, below, a check
+    that the list is not merely stale.
+    """
+    for candidate in (
+        pathlib.Path.home() / "Code" / "Projects" / "Claude-Colophon"
+        / "skills" / "repo-identicon" / "repo-identicon.py",
+        pathlib.Path.home() / ".claude" / "skills" / "repo-identicon"
+        / "repo-identicon.py",
+    ):
+        if candidate.exists():
+            return candidate
+    return None
 
 
-@unittest.skipUnless(PORTABLE_INSTALLER.exists(),
-                     f"{PORTABLE_INSTALLER} is not installed on this machine")
+PORTABLE_INSTALLER = _find_portable_installer()
+
+# Where the plugin lives when it is checked out at all. Its presence is what
+# separates "this machine never had it" from "it moved and nothing noticed".
+PLUGIN_ROOT = pathlib.Path.home() / "Code" / "Projects" / "Claude-Colophon"
+
+
+class TestTheConformanceCheckCanStillFindItsSubject(unittest.TestCase):
+    """Guards the guard.
+
+    The conformance tests below skip when the script is absent, which is right
+    on a machine that never had it and wrong on one where it merely moved. A
+    skip is indistinguishable from a pass in a green run, so the one case that
+    can be told apart is asserted here: if the plugin is checked out, its script
+    has to be where this file expects it.
+    """
+
+    @unittest.skipUnless(PLUGIN_ROOT.exists(),
+                         f"{PLUGIN_ROOT} is not checked out here")
+    def test_the_plugin_is_checked_out_so_the_script_must_be_found(self):
+        self.assertIsNotNone(
+            PORTABLE_INSTALLER,
+            f"{PLUGIN_ROOT} exists but no repo-identicon script was found; the "
+            "conformance tests below are silently skipping. Update "
+            "_find_portable_installer().")
+
+
+@unittest.skipUnless(PORTABLE_INSTALLER,
+                     "the repo-identicon script is not on this machine")
 class TestThePortableInstallerAgrees(unittest.TestCase):
     """The `repo-identicon` skill carries its own copy of the derivation.
 
