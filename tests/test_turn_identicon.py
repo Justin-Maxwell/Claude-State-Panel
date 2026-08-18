@@ -327,6 +327,52 @@ def _find_portable_installer():
 
 PORTABLE_INSTALLER = _find_portable_installer()
 
+# The standard's own repository, where the specification and the pinned vectors
+# now live. This repository is one of its consumers and carries a vendored copy.
+STANDARD = pathlib.Path.home() / "Code" / "Projects" / "Repository-Identicon"
+
+
+@unittest.skipUnless(STANDARD.exists(), f"{STANDARD} is not checked out here")
+class TestThisRepositoryStillMatchesTheStandard(unittest.TestCase):
+    """This repository vendors the derivation rather than importing it.
+
+    That is the intended shape -- pinned vectors exist so independent
+    implementations agree without a package manager -- but a vendored copy with
+    nothing checking it is just a fork nobody has noticed yet. These are the
+    checks, and they are machine-local, so a checkout without the standard
+    beside it skips rather than failing.
+    """
+
+    def test_the_vectors_are_the_standard_s_vectors(self):
+        """The vectors are the conformance mechanism. If ours have drifted from
+        the canonical set, every test that passes against them proves nothing."""
+        ours = json.loads((support.REPO_ROOT / "identicon" / "vectors.json").read_text())
+        theirs = json.loads((STANDARD / "vectors.json").read_text())
+        self.assertEqual(theirs, ours)
+
+    def test_the_derivation_agrees_line_for_line_except_the_icon_prefix(self):
+        """One line is *expected* to differ: ICON_PREFIX is an icon theme
+        namespace the specification leaves to the implementing tool, and
+        changing ours would orphan every icon already installed. Anything else
+        differing is drift."""
+        ours = (support.REPO_ROOT / "identicon" / "repository-identicon.py").read_text()
+        theirs = (STANDARD / "repository-identicon.py").read_text()
+        import difflib
+        changed = [line for line in difflib.unified_diff(
+            theirs.splitlines(), ours.splitlines(), lineterm="", n=0)
+            if line.startswith(("+", "-")) and not line.startswith(("+++", "---"))]
+        offending = [line for line in changed if "ICON_PREFIX" not in line
+                     and "claude-state-identicon" not in line
+                     and "repository-identicon" not in line
+                     and not line.lstrip("+-").strip().startswith("#")]
+        self.assertEqual([], offending,
+                         "the vendored derivation has drifted from the standard")
+
+    def test_the_text_renderer_is_byte_identical(self):
+        """No per-tool value in this one, so nothing may differ."""
+        ours = (support.REPO_ROOT / "identicon" / "text-identicon.py").read_bytes()
+        self.assertEqual((STANDARD / "text-identicon.py").read_bytes(), ours)
+
 # Where the plugin lives when it is checked out at all. Its presence is what
 # separates "this machine never had it" from "it moved and nothing noticed".
 PLUGIN_ROOT = pathlib.Path.home() / "Code" / "Projects" / "Claude-Colophon"
