@@ -415,6 +415,34 @@ class TestThePortableInstallerAgrees(unittest.TestCase):
                          self.portable("--colour").strip())
         self.assertEqual(module.render_svg(key, SIZE), self.portable("--svg"))
 
+    def test_the_vendored_text_renderer_is_the_one_committed_here(self):
+        """The plugin carries its own copy of the mosaic renderer, because a
+        plugin is copied whole and cannot depend on anything.
+
+        Byte equality rather than behavioural comparison, because the thing most
+        likely to go wrong is the 230-character octant table: a copy that lost
+        or transposed one entry would render a plausible, wrong glyph for one
+        pattern in 256, which no sampled comparison would reliably catch and no
+        human would spot by eye. The module carries a selftest that re-derives
+        the table from `unicodedata`, so the vendored copy can prove itself --
+        but only if it is genuinely the same file.
+        """
+        canonical = support.REPO_ROOT / "identicon" / "mosaic-identicon.py"
+        vendored = PORTABLE_INSTALLER.parent / "mosaic-identicon.py"
+        self.assertTrue(vendored.exists(),
+                        f"{vendored} is missing, so the plugin writes no text form")
+        self.assertEqual(canonical.read_bytes(), vendored.read_bytes(),
+                         "the vendored renderer has drifted; re-copy it from "
+                         "identicon/mosaic-identicon.py")
+
+    def test_the_vendored_renderer_passes_its_own_selftest(self):
+        """It re-derives the whole octant table from the Unicode database, so a
+        corrupted copy fails here rather than in someone's terminal."""
+        vendored = PORTABLE_INSTALLER.parent / "mosaic-identicon.py"
+        result = subprocess.run(["python3", str(vendored), "--selftest"],
+                                capture_output=True, text=True, timeout=60)
+        self.assertEqual(0, result.returncode, result.stdout + result.stderr)
+
     def test_it_writes_nothing_when_asked_only_to_derive(self):
         """The read-only flags are what the test suite and a curious user reach
         for; either silently installing would be a nasty surprise."""
