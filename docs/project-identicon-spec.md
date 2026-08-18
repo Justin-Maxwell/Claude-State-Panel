@@ -105,20 +105,26 @@ https://user:pass@github.com/Owner/Repo.git    git://github.com/Owner/Repo.git
 GitHub-style: a 5×5 grid, mirrored, so every identicon is vertically symmetric
 and reads as a deliberate mark rather than as noise.
 
-Let `d` be the **MD5 digest of the key encoded as UTF-8**, sixteen bytes.
+Let `h` be the **MD5 digest of the key encoded as UTF-8, as lowercase hex**,
+thirty-two characters.
 
 ```
 grid[row][col] = false for all row, col in 0..4
 
-for col in 0..2:
-    for row in 0..4:
-        if d[col * 5 + row] mod 2 == 0:
-            grid[row][col]     = true
-            grid[row][4 - col] = true
+for index in 0..14:
+    painted = hexval(h[index]) mod 2 == 0
+    col, row = index div 5, index mod 5
+    grid[row][2 - col] = painted
+    grid[row][2 + col] = painted
 ```
 
-Bytes 0 to 14 are consumed, one per cell of the left three columns. Column 0
-mirrors onto 4 and column 1 onto 3; column 2 is the axis.
+The first fifteen hex **characters** are consumed, one per cell, drawn down the
+middle column first and then mirrored outwards: characters 0-4 fill column 2,
+5-9 fill columns 1 and 3, 10-14 fill columns 0 and 4. Even is foreground.
+
+Note this indexes hex characters, not digest bytes, and works centre-out rather
+than left-to-right. Both details are inherited rather than chosen — see
+**Where these constants come from** below.
 
 MD5 is used because this is an identity function, not a security one. It must
 be fast, stable, and available everywhere.
@@ -126,13 +132,13 @@ be fast, stable, and available everywhere.
 ## The colour
 
 ```
-hue = d[15] * 360 / 256          integer division
-saturation = 0.55
-lightness  = 0.50
+hue        = hexval(h[-7:]) / 0xfffffff      the last seven hex characters
+saturation = 0.7
+lightness  = 0.5
 ```
 
-Byte 15 is the one byte the grid does not consume, so the colour and the pattern
-come from the same digest and cannot drift apart.
+The hue is drawn from the same digest as the grid, so colour and pattern cannot
+drift apart. Saturation and lightness are fixed rather than derived.
 
 Convert HSL to RGB by the standard formula. Quantise each component as:
 
@@ -145,14 +151,31 @@ is half to even while most languages' native rounding is half up; following the
 reference language's default would have made this specification quietly
 unportable.
 
-Saturation and lightness are fixed at values that stay legible on both light and
-dark backgrounds.
+### Where these constants come from
+
+Every number above — the centre-out hex-character walk, the seven-character hue
+draw, `0.7` and `0.5` — is taken from **`stewartlord/identicon.js`**, vendored at
+`identicon/reference/vendor/identicon.js` and pinned by `identicon/vectors.json`.
+None of them is ours.
+
+That is deliberate, and it is the reason to state it here rather than to justify
+each value on its merits. The PNGs are produced through that library, so any
+constant we picked independently would be a second opinion that the rendered
+image would immediately contradict. Deferring to the library removes the
+decision entirely: there is one source, and conformance is testable rather than
+arguable. An earlier draft of this document specified `saturation = 0.55` and a
+byte-indexed left-to-right grid; both were plausible, neither matched what
+shipped, and the committed identicon disagreed with its own specification until
+this was reconciled.
+
+The corollary is that these values are not defended, only recorded. If the
+vendored library is ever replaced, they change with it, and this section is
+where to look.
 
 Note that fixed-lightness HSL clusters perceptually: the hue draw is uniform, but
 equal hue steps are not equally visible, so the green band reads as one colour
-across roughly 50 degrees. A perceptually uniform space would fix it. This is
-one of several reasons to take the pattern and colour from an established
-implementation instead.
+across roughly 50 degrees. A perceptually uniform space would fix it, and this
+is a known cost of taking the colour from the reference rather than choosing it.
 
 ## Derived names
 
